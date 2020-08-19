@@ -477,6 +477,7 @@ int flb_engine_start(struct flb_config *config)
     event->mask = MK_EVENT_EMPTY;
     event->status = MK_EVENT_NONE;
 
+    printf("FLUSH = %lf\n\n\n\n", config->flush);
     flb_time_from_double(&t_flush, config->flush);
     config->flush_fd = mk_event_timeout_create(evl,
                                                t_flush.tm.tv_sec,
