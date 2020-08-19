@@ -27,6 +27,9 @@
 #include <msgpack.h>
 
 #include "stdout.h"
+#include "stdio.h"
+
+// #define CHECK_RAW_MSGPACK_INPUT
 
 static int cb_stdout_init(struct flb_output_instance *ins,
                           struct flb_config *config, void *data)
@@ -44,6 +47,15 @@ static int cb_stdout_init(struct flb_output_instance *ins,
         return -1;
     }
     ctx->ins = ins;
+
+#ifdef CHECK_RAW_MSGPACK_INPUT
+    FILE *fp = fopen("/labhome/romanpr/workspace/git/fluent-bit/build/msgpackcheck.bin","wb");
+    if (fp == NULL) {
+         printf("cant open file for check binary output error\n");
+    } else {
+        ctx->check_in_raw_msgpack_fd = fileno(fp);
+    }
+#endif
 
     ret = flb_output_config_map_set(ins, (void *) ctx);
     if (ret == -1) {
@@ -146,6 +158,10 @@ static void cb_stdout_flush(const void *data, size_t bytes,
             msgpack_object_print(stdout, result.data);
 
         }
+#ifdef CHECK_RAW_MSGPACK_INPUT
+        // to check that we recieved all data from in_raw_msgpack
+        write(ctx->check_in_raw_msgpack_fd, data, bytes);
+#endif
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
     }
@@ -157,13 +173,15 @@ static void cb_stdout_flush(const void *data, size_t bytes,
 static int cb_stdout_exit(void *data, struct flb_config *config)
 {
     struct flb_stdout *ctx = data;
-
     if (!ctx) {
         return 0;
     }
 
     flb_free(ctx);
     return 0;
+#ifdef CHECK_RAW_MSGPACK_INPUT
+    close(ctx->check_in_raw_msgpack_fd);
+#endif
 }
 
 /* Configuration properties map */
