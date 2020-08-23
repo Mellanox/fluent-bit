@@ -18,14 +18,35 @@
  */
 
 #include <fluent-bit.h>
+
+#define _OPEN_SYS_ITOA_EXT
+#include <stdio.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
 
 #define VERBOSE
-#define SERVER_SOCK_PATH "./fb_sock_server"
-#define CLIENT_SOCK_PATH "./fb_sick_client"
+#define SERVER_SOCK_PATH "/labhome/romanpr/workspace/fb_sock_server"
+#define CLIENT_SOCK_PATH "/labhome/romanpr/workspace/fb_sock_client"
 
+// To check sockets cleanup
+
+typedef struct in_plugin_data_t {
+    char * buffer_ptr;
+    char * server_addr;
+} in_plugin_data_t;
+
+void get_socket_path(const char * name, char * result) {
+    char pid_str[16];
+    sprintf(pid_str, "%d", getpid());
+    strncpy(result, name, strlen(name));
+    strcat(result, "_");
+    strcat(result, pid_str);
+}
+
+
+char client_addr[128];
+char server_addr[128];
 
 flb_ctx_t *ctx;
 struct flb_input_instance *i_ins;
@@ -117,7 +138,7 @@ bool ring_doorbell(int client_fd, int data_len) {
 
     memset(&server_address, 0, address_length);
     server_address.sun_family = AF_UNIX;
-    strcpy(server_address.sun_path, SERVER_SOCK_PATH);
+    strcpy(server_address.sun_path, server_addr);
 
     // TBD(romanpr): to put timeout on socket
     bytes_sent     = sendto(client_fd,
@@ -139,7 +160,14 @@ bool ring_doorbell(int client_fd, int data_len) {
 }
 
 
-int init() {
+int init(const char * host, const int port) {
+    get_socket_path(CLIENT_SOCK_PATH, client_addr);
+    printf ("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, client_addr);
+    get_socket_path(SERVER_SOCK_PATH, server_addr);
+    printf ("server path: \"%s\" -> \"%s\"\n", SERVER_SOCK_PATH, server_addr);
+
+    printf ("input: %s:%d\n\n\n\n", host, port);
+
 #ifdef VERBOSE
     printf("hello-word-init\n");
 #endif
@@ -152,23 +180,19 @@ int init() {
     if (!ctx) {
         exit(EXIT_FAILURE);
     }
-    flb_service_set(ctx, "Flush", "0.1", NULL); // to set flush timeout
+    flb_service_set(ctx, "Flush", "1", NULL); // to set flush timeout
     flb_service_set(ctx, "Grace", "1", NULL);   // to set timeout before exit
-    // flb_service_set(ctx, "FLB_INPUT_CHUNK_FS_MAX_SIZE",   "262", NULL);   // is this thing works?
-
-    // in_ffd = flb_input(ctx, "lib", NULL);
-    // in_ffd = flb_input(ctx, "shared_mem_ipc", NULL);
-    // flb_input_set(ctx, i_ins->id, "tag", "test", NULL);
-
 
     // create a client socket here to be ready to ring to "doorbell"
-    doorbell_cli = ipc_unix_sock_cli_create(CLIENT_SOCK_PATH);
+    doorbell_cli = ipc_unix_sock_cli_create(client_addr);
 #ifdef VERBOSE
     printf ("created client sock %d\n", doorbell_cli);
 #endif
-    // code from flb_lib.c  flb_input
-    char * buffer_ptr = buffer;
-    i_ins = flb_input_new(ctx->config, "raw_msgpack", (void *) buffer_ptr, FLB_TRUE);
+    in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
+
+    in_data->buffer_ptr  = buffer;
+    in_data->server_addr = server_addr;
+    i_ins = flb_input_new(ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
 #ifdef VERBOSE
     printf("i_ins = %p\n", i_ins);
     printf ("i_ins->data = %p\n", i_ins->data);
@@ -180,6 +204,9 @@ int init() {
     // flb_input_set(ctx, i_ins->id, "tag", "test", NULL);
     // out_ffd = flb_output(ctx, "forward", NULL);
     out_ffd = flb_output(ctx, "forward", NULL);
+    // TBD(romanpr): storage.type , storage.backlog.... see the following url docs.fluentbit.io/manual/administration/buffering-and-storage
+    // flb_service_set(ctx, "FLB_INPUT_CHUNK_FS_MAX_SIZE",   "262", NULL);   // is this thing works?
+
 #ifdef VERBOSE
     printf("out_ffd = %d\n", out_ffd);
 #endif

@@ -29,7 +29,8 @@
 #include "stdout.h"
 #include "stdio.h"
 
-// #define CHECK_RAW_MSGPACK_INPUT
+//#define CHECK_RAW_MSGPACK_INPUT
+//#define MEASURE_SPEED
 
 static int cb_stdout_init(struct flb_output_instance *ins,
                           struct flb_config *config, void *data)
@@ -47,6 +48,11 @@ static int cb_stdout_init(struct flb_output_instance *ins,
         return -1;
     }
     ctx->ins = ins;
+#ifdef MEASURE_SPEED
+    ctx->ts_begin       = 0;
+    ctx->ts_end         = 0;
+    ctx->bytes_received = 0;
+#endif // MEASURE_SPEED
 
 #ifdef CHECK_RAW_MSGPACK_INPUT
     FILE *fp = fopen("/labhome/romanpr/workspace/git/fluent-bit/build/msgpackcheck.bin","wb");
@@ -106,6 +112,91 @@ static int cb_stdout_init(struct flb_output_instance *ins,
     return 0;
 }
 
+static uint64_t clx_parse_cpuinfo(void) {
+    float f = 1.0;
+    char buf[256];
+
+    FILE* fp = fopen("/proc/cpuinfo", "r");
+    if (fp) {
+        while (fgets(buf, 256, fp)) {
+            if (!strncmp(buf, "model name", 10)) {
+                char* p = strchr(buf, '@');
+                if (p) {
+                    sscanf(++p, "%f", &f);
+                }
+                break;
+            }
+        }
+        fclose(fp);
+    }
+    if (f < 1.0) {
+        f = 1.0;  // if cannot get correct frequency - use TSC
+        printf("[warning] Could not get correct value of frequency. Values are in ticks.");
+    } else {
+        f *= 1.0e9;  // Value in 'model name' is in GHz
+    }
+    return (uint64_t)f;
+}
+
+static  uint64_t get_cpu_freq(void) {
+#ifdef USE_SLEEP_TO_GET_CPU_FREQUENCY
+    // Note:  Recent Intel CPUs have the TSC running at constant frequency.
+    static uint64_t clock = 0;
+    if (clock == 0) {
+        uint64_t t_start = read_hres_clock();
+        sleep(1);
+        uint64_t t_end = read_hres_clock();
+        clock = t_end - t_start;
+    }
+    return clock;
+#else
+    return clx_parse_cpuinfo();
+#endif
+}
+
+
+static inline uint64_t read_hres_clock(void) {
+    uint32_t low, high;
+    asm volatile ("rdtsc" : "=a" (low), "=d" (high));
+    return ((uint64_t)high << 32) | (uint64_t)low;
+}
+
+
+uint64_t clx_convert_cycles_to_usec(uint64_t cycles) {
+    static uint64_t freq = 0;
+    if (freq < 1) {
+        // initialize once
+        freq = get_cpu_freq();
+        if (freq == 1) {
+            freq = 1e6;  // time will be in ticks
+        }
+    }
+    uint64_t ret = cycles * 1e6 / freq;
+    return ret;
+}
+
+
+static void measure_recv_speed(const void *data, size_t bytes, struct flb_stdout *ctx) {
+    if (ctx->ts_begin == 0) {
+        // set ts_begin on first data
+        ctx->ts_begin = read_hres_clock();
+    }
+
+    ctx->bytes_received += bytes;
+
+    if (ctx->bytes_received > 100*1024*1024) {// update timers on every 2 Mb
+        ctx->ts_end = read_hres_clock();
+        uint64_t t_diff_clocks = ctx->ts_end - ctx->ts_begin;
+        uint64_t time_diff = clx_convert_cycles_to_usec(t_diff_clocks);
+
+        printf ("received %"PRIu64" bytes in %"PRIu64" usec\n", ctx->bytes_received, time_diff );
+
+        ctx->bytes_received = 0;
+        ctx->ts_begin = ctx->ts_end;
+    }
+}
+
+
 static void cb_stdout_flush(const void *data, size_t bytes,
                             const char *tag, int tag_len,
                             struct flb_input_instance *i_ins,
@@ -119,8 +210,14 @@ static void cb_stdout_flush(const void *data, size_t bytes,
     char *buf = NULL;
     (void) i_ins;
     (void) config;
+
+#ifdef MEASURE_SPEED
+    measure_recv_speed(data, bytes, ctx);
+#else  // MEASURE_SPEED
+
     struct flb_time tmp;
     msgpack_object *p;
+
 
     if (ctx->out_format != FLB_PACK_JSON_FORMAT_NONE) {
         json = flb_pack_msgpack_to_json_format(data, bytes,
@@ -156,16 +253,17 @@ static void cb_stdout_flush(const void *data, size_t bytes,
             // msgpack_object_print(stdout, *p);
             // printf("]\n");
             msgpack_object_print(stdout, result.data);
-
         }
-#ifdef CHECK_RAW_MSGPACK_INPUT
-        // to check that we recieved all data from in_raw_msgpack
-        write(ctx->check_in_raw_msgpack_fd, data, bytes);
-#endif
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
     }
     fflush(stdout);
+#endif  // MEASURE_SPEED
+
+#ifdef CHECK_RAW_MSGPACK_INPUT
+            // to check that we recieved all data from in_raw_msgpack
+            write(ctx->check_in_raw_msgpack_fd, data, bytes);
+#endif
 
     FLB_OUTPUT_RETURN(FLB_OK);
 }

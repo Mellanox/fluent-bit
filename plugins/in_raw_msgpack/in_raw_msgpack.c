@@ -271,14 +271,17 @@ static int in_raw_msgpack_init(struct flb_input_instance *in,
     }
     ctx->buf_len = 0;
     ctx->ins = in;
+
     // data pointer
     printf ("check init pointer %p\n", data);
-    ctx->ptr = data;
+    in_plugin_data_t *in_data = (in_plugin_data_t *)data;
+    ctx->ptr = in_data->buffer_ptr;
+
+
     printf("pointer %p is set to be buffer pointer\n", ctx->ptr);
 
-    // ctx->fd = fd;
-
-    strncpy(ctx->unix_sock_path, "./fb_sock_server", sizeof(ctx->unix_sock_path));
+    strncpy(ctx->unix_sock_path, in_data->server_address, sizeof(ctx->unix_sock_path));
+    printf("\n\n\n server socket: %s, should be %s\n\n\n",ctx->unix_sock_path, in_data->server_address);
     set_sock_fd(ctx);
 
 

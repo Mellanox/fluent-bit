@@ -29,6 +29,11 @@
 //     int  shared_obj_len;
 // };
 
+typedef struct in_plugin_data_t {
+    char * buffer_ptr;
+    char * server_address;
+} in_plugin_data_t;
+
 typedef struct doorbell_msg_t {
     int data_len;
 } doorbell_msg_t;
