@@ -24,10 +24,6 @@
 #include <fluent-bit/flb_info.h>
 #include <fluent-bit/flb_input.h>
 
-// struct ipc_server_info_t {
-//     char * shared_obj_name;
-//     int  shared_obj_len;
-// };
 
 typedef struct in_plugin_data_t {
     char * buffer_ptr;
@@ -50,27 +46,12 @@ struct flb_raw_msgpack_config {
     struct flb_pack_state pack_state;
     // ============
 
-    // socket "doorbell"
-    // bool use_unix_sock;
     char unix_sock_path[128];
     int sock_fd;
-    // int cli_sock_fd;
-    // char sock_buf_bit[1];
-    // int sock_buf_len;
     // =================
 
     doorbell_msg_t msg;
-    //char *message;
-    //int  message_len;
-
-    //char*  to_dump_msgpack;
-    //size_t to_dump_msgpack_size;
-
     struct flb_input_instance *ins;
-
-    // struct ipc_server_info_t ipc_server_info;
-
-
 };
 
 #endif  // FLB_IN_RAW_MSGPACK_H

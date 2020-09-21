@@ -36,29 +36,35 @@ typedef struct in_plugin_data_t {
     char * server_addr;
 } in_plugin_data_t;
 
-void get_socket_path(const char * name, char * result) {
+void get_socket_path(const char* name, const char* postfix, char* result) {
     char pid_str[16];
     sprintf(pid_str, "%d", getpid());
     strncpy(result, name, strlen(name));
     strcat(result, "_");
     strcat(result, pid_str);
+    strcat(result, "_");
+    strcat(result, postfix);
 }
 
 
-char client_addr[128];
-char server_addr[128];
 
-flb_ctx_t *ctx;
-struct flb_input_instance *i_ins;
-int i;
-int n;
+// TBD(romanpr): refactor
+typedef struct raw_msgpack_api_context_t {
+    char client_addr[256];
+    char server_addr[256];
 
-flb_ctx_t *ctx;
-int in_ffd;
-int out_ffd;
+    flb_ctx_t *ctx;
+    struct flb_input_instance *i_ins;
+    int i;
+    int n;
 
-int doorbell_cli;
-char buffer[8192 * 2]; // 16 kb
+    int in_ffd;
+    int out_ffd;
+
+    int doorbell_cli;
+    char *buffer;
+} raw_msgpack_api_context_t;
+
 
 typedef struct doorbell_msg_t {
     int data_len;
@@ -125,7 +131,7 @@ int ipc_unix_sock_cli_create(char *sock_path) {
 }
 
 
-bool ring_doorbell(int client_fd, int data_len) {
+bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_len) {
     doorbell_msg_t ring_msg;
     ring_msg.data_len = data_len;
     int msg_len = sizeof(ring_msg);
@@ -138,7 +144,7 @@ bool ring_doorbell(int client_fd, int data_len) {
 
     memset(&server_address, 0, address_length);
     server_address.sun_family = AF_UNIX;
-    strcpy(server_address.sun_path, server_addr);
+    strcpy(server_address.sun_path, raw_ctx->server_addr);
 
     // TBD(romanpr): to put timeout on socket
     bytes_sent     = sendto(client_fd,
@@ -160,100 +166,158 @@ bool ring_doorbell(int client_fd, int data_len) {
 }
 
 
-int init(const char * host, const int port) {
-    get_socket_path(CLIENT_SOCK_PATH, client_addr);
-    printf ("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, client_addr);
-    get_socket_path(SERVER_SOCK_PATH, server_addr);
-    printf ("server path: \"%s\" -> \"%s\"\n", SERVER_SOCK_PATH, server_addr);
+void* init(const char* output_plugin_name, const char * host, const char * port) {
+    raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
 
-    printf ("input: %s:%d\n\n\n\n", host, port);
+    char postfix[128] = "";
+    if (strlen(output_plugin_name) > 0) {
+        strcpy(postfix, output_plugin_name);
+    } else {
+        strcpy(postfix, "defPlugin");
+    }
+    strcat(postfix, "_");
+    if (strlen(host) > 0) {
+        strcat(postfix, host);
+    } else {
+        strcat(postfix, "defHost");
+    }
+    strcat(postfix, "_");
+    if (strlen(host) > 0) {
+        strcat(postfix, port);
+    } else {
+        strcat(postfix, "defPort");
+    }
+    get_socket_path(CLIENT_SOCK_PATH, postfix, raw_ctx->client_addr );
+    get_socket_path(SERVER_SOCK_PATH, postfix, raw_ctx->server_addr);
+
+    printf("API raw msgpack: init\n");
+    printf("Input %s:%s\n\n", host, port);
 
 #ifdef VERBOSE
     printf("hello-word-init\n");
+    printf("input: %s:%s\n\n", host, port);
+
+    printf("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
+    printf("server path: \"%s\" -> \"%s\"\n\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
 #endif
 
     /* Initialize library */
-    ctx = flb_create();
+    raw_ctx->ctx = flb_create();
 #ifdef VERBOSE
-    printf("ctx = %p\n", ctx);
+    printf("ctx = %p\n", raw_ctx->ctx);
 #endif
-    if (!ctx) {
-        exit(EXIT_FAILURE);
+    if (!raw_ctx->ctx) {
+        return NULL;
     }
-    flb_service_set(ctx, "Flush", "1", NULL); // to set flush timeout
-    flb_service_set(ctx, "Grace", "1", NULL);   // to set timeout before exit
+    flb_service_set(raw_ctx->ctx, "Flush", "1", NULL); // to set flush timeout
+    flb_service_set(raw_ctx->ctx, "Grace", "1", NULL);   // to set timeout before exit
+
+    // TBD(romanpr): find out why does it not work (see cio_file.c and flb_input_chunk.c)
+    // flb_service_set(ctx, "storage.path", "/labhome/romanpr/log/flb-storage", NULL);
+    // flb_service_set(ctx, "storage.sync", "normal", NULL);
+    // flb_service_set(ctx, "storage.checksum", "off", NULL);
+    // flb_service_set(ctx, "storage.backlog.mem_limit", "1024M", NULL);
 
     // create a client socket here to be ready to ring to "doorbell"
-    doorbell_cli = ipc_unix_sock_cli_create(client_addr);
+    raw_ctx->doorbell_cli = ipc_unix_sock_cli_create(raw_ctx->client_addr);
 #ifdef VERBOSE
-    printf ("created client sock %d\n", doorbell_cli);
+    printf("created client sock %d\n", raw_ctx->doorbell_cli);
 #endif
     in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
 
-    in_data->buffer_ptr  = buffer;
-    in_data->server_addr = server_addr;
-    i_ins = flb_input_new(ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
+    raw_ctx->buffer = (char*) calloc(8192 * 2, sizeof(char));
+    in_data->buffer_ptr  = raw_ctx->buffer;
+    in_data->server_addr = raw_ctx->server_addr;
+    raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
+
 #ifdef VERBOSE
-    printf("i_ins = %p\n", i_ins);
-    printf ("i_ins->data = %p\n", i_ins->data);
+    printf("i_ins = %p\n", raw_ctx->i_ins);
+    printf("i_ins->data = %p\n", raw_ctx->i_ins->data);
 #endif
-    if (!i_ins) {
-        return -1;
+    if (!raw_ctx->i_ins) {
+        return NULL;
     }
 
-    // flb_input_set(ctx, i_ins->id, "tag", "test", NULL);
-    // out_ffd = flb_output(ctx, "forward", NULL);
-    out_ffd = flb_output(ctx, "forward", NULL);
-    // TBD(romanpr): storage.type , storage.backlog.... see the following url docs.fluentbit.io/manual/administration/buffering-and-storage
-    // flb_service_set(ctx, "FLB_INPUT_CHUNK_FS_MAX_SIZE",   "262", NULL);   // is this thing works?
+    // TBD(romanpr): docs.fluentbit.io/manual/administration/buffering-and-storage
+    // flb_input_set(ctx, i_ins->id, "storage.type", "filesystem", NULL);
+    // TBD(romanpr): get the out plugin name from environment
+    // TBD(romanpr): test with Elastic AND with InfluxDB
+
+    raw_ctx->out_ffd = -1;
+    if (strlen(output_plugin_name) > 0) {  // simple check for plugin name
+        raw_ctx->out_ffd = flb_output(raw_ctx->ctx, output_plugin_name, NULL);
+    }
+    if (raw_ctx->out_ffd == -1) {
+        // if cannot find 'output_plugin_name' plugin, use default 'forward'
+        raw_ctx->out_ffd = flb_output(raw_ctx->ctx, "forward", NULL);
+    }
 
 #ifdef VERBOSE
-    printf("out_ffd = %d\n", out_ffd);
+    printf("out_ffd = %d\n", raw_ctx->out_ffd);
 #endif
     // flb_output_set(ctx, out_ffd, "match", "test", NULL);
 
-    /* Start the background worker */
-    flb_start(ctx);
+    flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Host", host, NULL);
+    flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Port", port, NULL);
+
+    // Start the background worker
+    flb_start(raw_ctx->ctx);
 #ifdef VERBOSE
-    printf ("init finished\n\n");
+    printf("init finished\n\n");
+    long long tmp_ = (long long) raw_ctx;
+    // printf("returning: %p   ->   %lld  -> (back) %llx\n\n", (void*) raw_ctx, tmp_, tmp_);
 #endif
-    return 0;
+    return (void*) raw_ctx;
 }
 
 
-int add_data(void* data, int len) {
+int add_data(void* api_raw_ctx, void* data, int len) {
+    if (api_raw_ctx == NULL)
+        return -1;
+    // printf("received context: %p  <-   %d\n\n", api_raw_ctx, (int) api_raw_ctx);
+
+    raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_raw_ctx;
     if (len == 0)
         return 0;
 #ifdef VERBOSE
-    // printf("hello-word-add_data\n");
-#endif
-    // printf ("Append raw data of len %d:\n", len);
+    printf("Append raw data of len %d:\n", len);
     // DumpHex(data, len);
-    memcpy(buffer, data, len);
-#ifdef VERBOSE
-    //printf ("ring the doorbell\n");
 #endif
-   ring_doorbell(doorbell_cli, len);
+    memcpy(raw_ctx->buffer, data, len);
+    // TBD(romanpr): check this:  i_ins->context->p = data;
 
-    return 0;
-}
-
-int finalize() {
 #ifdef VERBOSE
-    printf("hello-word-exit\n");
+    //printf("ring the doorbell\n");
 #endif
-    close(doorbell_cli);
-    flb_stop(ctx);
-    /* Release Resources */
-    flb_destroy(ctx);
+    ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len);
 
     return 0;
 }
 
 
+int finalize(void* api_raw_ctx) {
+    if (api_raw_ctx == NULL)
+        return -1;
+    raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_raw_ctx;
 
-msgpack_sbuffer generate_message_pack(n)
-{
+#ifdef VERBOSE
+    printf("API raw msgpack: finalize\n");
+    printf("\t\t\t\t\t\tserver_addr '%s'\n", raw_ctx->server_addr);
+#endif
+    // clean up socket
+    close(raw_ctx->doorbell_cli);
+    unlink(raw_ctx->client_addr);
+    // finilize fluent bit
+    flb_stop(raw_ctx->ctx);
+
+    if (raw_ctx->buffer)
+        free(raw_ctx->buffer);
+    flb_destroy(raw_ctx->ctx);
+    return 0;
+}
+
+
+msgpack_sbuffer generate_message_pack(n) {
     msgpack_sbuffer sbuf;
     msgpack_sbuffer_init(&sbuf);
 
@@ -296,51 +360,5 @@ void dump_packed_message(msgpack_sbuffer sbuf, FILE *out) {
 
 int main()
 {
-    return 0;
-}
-
-
-int old_main()
-{
-    int i;
-    int n;
-    char tmp[256];
-    flb_ctx_t *ctx;
-    int in_ffd;
-    int out_ffd;
-
-    /* Initialize library */
-    ctx = flb_create();
-    if (!ctx) {
-        exit(EXIT_FAILURE);
-    }
-
-    // Set Service Properties
-    int ret = flb_service_set(ctx, "Flush", "1", NULL);
-
-    // Enable Input Plugin Instance
-    in_ffd = flb_input(ctx, "lib", NULL);
-    // Set Input Plugin Properties
-    // user can input more pais tag1: test1, tag2:test2 ...
-    flb_input_set(ctx, in_ffd, "tag", "test", NULL);
-
-    out_ffd = flb_output(ctx, "stdout", NULL);
-    flb_output_set(ctx, out_ffd, "match", "test", NULL);
-
-    /* Start the background worker */
-    flb_start(ctx);
-
-    for (i = 0; i < 10; i++) {
-        msgpack_sbuffer m_p = generate_message_pack(i);
-        dump_packed_message(m_p, stdout);
-
-        msgpack_sbuffer_destroy(&m_p);
-    }
-
-    flb_stop(ctx);
-
-    /* Release Resources */
-    flb_destroy(ctx);
-
     return 0;
 }

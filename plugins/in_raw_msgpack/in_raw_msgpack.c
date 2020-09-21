@@ -108,14 +108,6 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
     msgpack_packer mp_pck;
     msgpack_sbuffer mp_sbuf;
 
-    // bytes = read(ctx->fd,
-    //              ctx->buf + ctx->buf_len,
-    //              sizeof(ctx->buf) - ctx->buf_len - 1);
-
-    // bytes = read(ctx->sock_fd,
-    //              ctx->sock_buf_bit + ctx->sock_buf_len,
-    //              sizeof(ctx->sock_buf_bit) - ctx->sock_buf_len - 1);
-
     struct sockaddr_un client_address;
     socklen_t address_length  = sizeof(struct sockaddr_un);
     bytes = recvfrom(ctx->sock_fd,
@@ -146,111 +138,12 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
     flb_input_chunk_append_raw(ins, NULL, 0, ctx->ptr, ctx->msg.data_len);
 
     return 0;
-
-    // /* Initialize local msgpack buffer */
-    // msgpack_sbuffer_init(&mp_sbuf);
-    // msgpack_packer_init(&mp_pck, &mp_sbuf, msgpack_sbuffer_write);
-
-    // while (ctx->buf_len > 0) {
-    //     // TBD(romanpr): do we need to check if we have read not entire buffer
-    //     //printf ("buff of size %d: %s\n", ctx->buf_len, ctx->buf);
-    //     flb_input_chunk_append_raw(ins, NULL, 0, ctx->buf, ctx->buf_len);
-    //     ctx->buf_len = 0;
-    //     // break;
-    //     // if (!ctx->parser) {
-    //     //     printf("no parser\n");
-    //     //     ret = flb_pack_json_state(ctx->buf, ctx->buf_len,
-    //     //                               &pack, &pack_size, &ctx->pack_state);
-    //     //     if (ret == FLB_ERR_JSON_PART) {
-    //     //         printf("ret == FLB_ERR_JSON_PART\n");
-    //     //         flb_plg_debug(ctx->ins, "data incomplete, waiting for more...");
-    //     //         msgpack_sbuffer_destroy(&mp_sbuf);
-    //     //         return 0;
-    //     //     }
-    //     //     else if (ret == FLB_ERR_JSON_INVAL) {
-    //     //         printf("ret == FLB_ERR_JSON_INVAL\n");
-    //     //         flb_plg_debug(ctx->ins, "invalid JSON message, skipping");
-    //     //         flb_pack_state_reset(&ctx->pack_state);
-    //     //         flb_pack_state_init(&ctx->pack_state);
-    //     //         ctx->pack_state.multiple = FLB_TRUE;
-    //     //         ctx->buf_len = 0;
-    //     //         msgpack_sbuffer_destroy(&mp_sbuf);
-    //     //         return -1;
-    //     //     }
-    //     //     printf ("Process valid packaged records\n");
-    //     //     /* Process valid packaged records */
-    //     //     process_pack(&mp_pck, ctx, pack, pack_size);
-
-    //     //     printf ("Move out processed bytes\n");
-    //     //     /* Move out processed bytes */
-    //     //     consume_bytes(ctx->buf, ctx->pack_state.last_byte, ctx->buf_len);
-    //     //     ctx->buf_len -= ctx->pack_state.last_byte;
-    //     //     ctx->buf[ctx->buf_len] = '\0';
-
-    //     //     flb_pack_state_reset(&ctx->pack_state);
-    //     //     flb_pack_state_init(&ctx->pack_state);
-    //     //     ctx->pack_state.multiple = FLB_TRUE;
-
-    //     //     flb_free(pack);
-
-    //     //     printf ("append raw\n");
-    //     //     flb_input_chunk_append_raw(ins, NULL, 0,
-    //     //                                 mp_sbuf.data, mp_sbuf.size);
-    //     //     msgpack_sbuffer_destroy(&mp_sbuf);
-    //     //     printf ("returning\n");
-    //     //     return 0;
-    //     // }
-    //     // else {
-    //     //     printf("there is parser\n");
-    //     //     /* Reset time for each line */
-    //     //     flb_time_zero(&out_time);
-
-    //     //     /* Use the defined parser */
-    //     //     ret = flb_parser_do(ctx->parser, ctx->buf, ctx->buf_len,
-    //     //                         &out_buf, &out_size, &out_time);
-    //     //     if (ret >= 0) {
-    //     //         if (flb_time_to_double(&out_time) == 0) {
-    //     //             flb_time_get(&out_time);
-    //     //         }
-    //     //         pack_regex(&mp_sbuf, &mp_pck,
-    //     //                    ctx, &out_time, out_buf, out_size);
-    //     //         flb_free(out_buf);
-    //     //         flb_input_chunk_append_raw(ins, NULL, 0,
-    //     //                                    mp_sbuf.data, mp_sbuf.size);
-    //     //         msgpack_sbuffer_clear(&mp_sbuf);
-    //     //     }
-    //     //     else {
-    //     //         /* we need more data ? */
-    //     //         flb_plg_trace(ctx->ins, "data mismatch or incomplete");
-    //     //         msgpack_sbuffer_destroy(&mp_sbuf);
-    //     //         return 0;
-    //     //     }
-    //     // }
-
-    //     // if (ret == ctx->buf_len) {
-    //     //     ctx->buf_len = 0;
-    //     //     break;
-    //     // }
-    //     // else if (ret >= 0) {
-    //     //     /*
-    //     //      * 'ret' is the last byte consumed by the regex engine, we need
-    //     //      * to advance it position.
-    //     //      */
-    //     //     ret++;
-    //     //     consume_bytes(ctx->buf, ret, ctx->buf_len);
-    //     //     ctx->buf_len -= ret;
-    //     //     ctx->buf[ctx->buf_len] = '\0';
-    //     // }
-    // }
-
-    // // msgpack_sbuffer_destroy(&mp_sbuf);
-    // return 0;
-
 }
 
 static int config_destroy(struct flb_raw_msgpack_config *ctx)
 {
     close(ctx->sock_fd);
+    unlink(ctx->unix_sock_path);
     flb_free(ctx);
     return 0;
 }
