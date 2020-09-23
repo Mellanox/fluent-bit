@@ -274,11 +274,11 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 }
 
 
-int add_data(void* api_raw_ctx, void* data, int len) {
-    if (api_raw_ctx == NULL)
+int add_data(void* api_ctx, void* data, int len) {
+    if (api_ctx == NULL)
         return -1;
 
-    raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_raw_ctx;
+    raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
     if (len == 0)
         return 0;
 #ifdef VERBOSE
@@ -297,10 +297,10 @@ int add_data(void* api_raw_ctx, void* data, int len) {
 }
 
 
-int finalize(void* api_raw_ctx) {
-    if (api_raw_ctx == NULL)
+int finalize(void* api_ctx) {
+    if (api_ctx == NULL)
         return -1;
-    raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_raw_ctx;
+    raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
 
 #ifdef VERBOSE
     printf("API raw msgpack: finalize\n");
