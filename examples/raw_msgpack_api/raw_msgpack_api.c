@@ -26,8 +26,8 @@
 
 
 #define VERBOSE
-#define SERVER_SOCK_PATH "/labhome/romanpr/workspace/fb_sock_server"
-#define CLIENT_SOCK_PATH "/labhome/romanpr/workspace/fb_sock_client"
+#define SERVER_SOCK_PATH "/tmp/fb_sock_server"
+#define CLIENT_SOCK_PATH "/tmp/fb_sock_client"
 
 // To check sockets cleanup
 
@@ -55,8 +55,6 @@ typedef struct raw_msgpack_api_context_t {
 
     flb_ctx_t *ctx;
     struct flb_input_instance *i_ins;
-    int i;
-    int n;
 
     int in_ffd;
     int out_ffd;
@@ -166,14 +164,21 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
 }
 
 
-void* init(const char* output_plugin_name, const char * host, const char * port) {
+void* init(const char* output_plugin_name, const char * host, const char * port, const char * socket_prefix) {
     raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
 
     char postfix[128] = "";
-    if (strlen(output_plugin_name) > 0) {
-        strcpy(postfix, output_plugin_name);
+    if (strlen(socket_prefix) > 0) {
+        strcpy(postfix, socket_prefix);
     } else {
-        strcpy(postfix, "defPlugin");
+        strcat(postfix, "-");
+        printf("Warning: no socket prefix");
+    }
+    strcat(postfix, "_");
+    if (strlen(output_plugin_name) > 0) {
+        strcat(postfix, output_plugin_name);
+    } else {
+        strcat(postfix, "defPlugin");
     }
     strcat(postfix, "_");
     if (strlen(host) > 0) {
@@ -264,8 +269,6 @@ void* init(const char* output_plugin_name, const char * host, const char * port)
     flb_start(raw_ctx->ctx);
 #ifdef VERBOSE
     printf("init finished\n\n");
-    long long tmp_ = (long long) raw_ctx;
-    // printf("returning: %p   ->   %lld  -> (back) %llx\n\n", (void*) raw_ctx, tmp_, tmp_);
 #endif
     return (void*) raw_ctx;
 }
@@ -274,13 +277,12 @@ void* init(const char* output_plugin_name, const char * host, const char * port)
 int add_data(void* api_raw_ctx, void* data, int len) {
     if (api_raw_ctx == NULL)
         return -1;
-    // printf("received context: %p  <-   %d\n\n", api_raw_ctx, (int) api_raw_ctx);
 
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_raw_ctx;
     if (len == 0)
         return 0;
 #ifdef VERBOSE
-    printf("Append raw data of len %d:\n", len);
+    // printf("Append raw data of len %d:\n", len);
     // DumpHex(data, len);
 #endif
     memcpy(raw_ctx->buffer, data, len);
@@ -303,6 +305,7 @@ int finalize(void* api_raw_ctx) {
 #ifdef VERBOSE
     printf("API raw msgpack: finalize\n");
     printf("\t\t\t\t\t\tserver_addr '%s'\n", raw_ctx->server_addr);
+    printf("\t\t\t\t\t\tbuffer_addr '%p'\n", raw_ctx->buffer);
 #endif
     // clean up socket
     close(raw_ctx->doorbell_cli);
@@ -317,48 +320,48 @@ int finalize(void* api_raw_ctx) {
 }
 
 
-msgpack_sbuffer generate_message_pack(n) {
-    msgpack_sbuffer sbuf;
-    msgpack_sbuffer_init(&sbuf);
+// msgpack_sbuffer generate_message_pack(n) {
+//     msgpack_sbuffer sbuf;
+//     msgpack_sbuffer_init(&sbuf);
 
-    /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
-    msgpack_packer pk;
-    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+//     /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
+//     msgpack_packer pk;
+//     msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
 
-    // pack array what will contain (n+2) values(ints/booleans/strings)
-    msgpack_pack_array(&pk, n + 2);
+//     // pack array what will contain (n+2) values(ints/booleans/strings)
+//     msgpack_pack_array(&pk, n + 2);
 
-    int i;
-    for (i = 0; i < n; i++)
-        msgpack_pack_int(&pk, i);
+//     int i;
+//     for (i = 0; i < n; i++)
+//         msgpack_pack_int(&pk, i);
 
-    // pack the boolean
-    msgpack_pack_true(&pk);
+//     // pack the boolean
+//     msgpack_pack_true(&pk);
 
-    // pack string (size and body)
-    msgpack_pack_str(&pk, 11);
-    msgpack_pack_str_body(&pk, "test_plugin", 11);
+//     // pack string (size and body)
+//     msgpack_pack_str(&pk, 11);
+//     msgpack_pack_str_body(&pk, "test_plugin", 11);
 
-    return sbuf;
-}
+//     return sbuf;
+// }
 
-void dump_packed_message(msgpack_sbuffer sbuf, FILE *out) {
-    /* deserialize the buffer into msgpack_object instance. */
-    /* deserialized object is valid during the msgpack_zone instance alive. */
-    msgpack_zone mempool;
-    msgpack_zone_init(&mempool, 2048);
+// void dump_packed_message(msgpack_sbuffer sbuf, FILE *out) {
+//     /* deserialize the buffer into msgpack_object instance. */
+//     /* deserialized object is valid during the msgpack_zone instance alive. */
+//     msgpack_zone mempool;
+//     msgpack_zone_init(&mempool, 2048);
 
-    msgpack_object deserialized;
-    msgpack_unpack(sbuf.data, sbuf.size, NULL, &mempool, &deserialized);
+//     msgpack_object deserialized;
+//     msgpack_unpack(sbuf.data, sbuf.size, NULL, &mempool, &deserialized);
 
-    /* print the deserialized object. */
-    msgpack_object_print(out, deserialized);
-    puts("");
+//     /* print the deserialized object. */
+//     msgpack_object_print(out, deserialized);
+//     puts("");
 
-    msgpack_zone_destroy(&mempool);
-}
+//     msgpack_zone_destroy(&mempool);
+// }
 
-int main()
-{
-    return 0;
-}
+// int main()
+// {
+//     return 0;
+// }
