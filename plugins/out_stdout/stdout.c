@@ -253,6 +253,7 @@ static void cb_stdout_flush(const void *data, size_t bytes,
             // msgpack_object_print(stdout, *p);
             // printf("]\n");
             msgpack_object_print(stdout, result.data);
+            printf("\n\n");
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
