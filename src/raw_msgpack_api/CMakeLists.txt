@@ -11,3 +11,4 @@ add_library(raw_msgpack_api SHARED ${src})
 target_link_libraries(raw_msgpack_api fluent-bit-shared)
 target_link_libraries(raw_msgpack_api ${CMAKE_THREAD_LIBS_INIT})
 
+install(TARGETS raw_msgpack_api LIBRARY DESTINATION ${FLB_INSTALL_LIBDIR})
