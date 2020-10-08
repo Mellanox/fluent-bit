@@ -26,24 +26,42 @@
 #include <fluent-bit/flb_config_map.h>
 #include <msgpack.h>
 
-#include "stdout.h"
+#include "stdout_raw.h"
+#include "stdio.h"
 
-static int cb_stdout_init(struct flb_output_instance *ins,
-                          struct flb_config *config, void *data)
+//#define CHECK_RAW_MSGPACK_INPUT
+//#define MEASURE_SPEED
+
+static int cb_stdout_raw_init(struct flb_output_instance *ins,
+                              struct flb_config *config, void *data)
 {
     int ret;
     const char *tmp;
-    struct flb_stdout *ctx = NULL;
+    struct flb_stdout_raw *ctx = NULL;
     (void) ins;
     (void) config;
     (void) data;
 
-    ctx = flb_calloc(1, sizeof(struct flb_stdout));
+    ctx = flb_calloc(1, sizeof(struct flb_stdout_raw));
     if (!ctx) {
         flb_errno();
         return -1;
     }
     ctx->ins = ins;
+#ifdef MEASURE_SPEED
+    ctx->ts_begin       = 0;
+    ctx->ts_end         = 0;
+    ctx->bytes_received = 0;
+#endif // MEASURE_SPEED
+
+#ifdef CHECK_RAW_MSGPACK_INPUT
+    FILE *fp = fopen("/labhome/romanpr/workspace/git/fluent-bit/build/msgpackcheck.bin","wb");
+    if (fp == NULL) {
+         printf("cant open file for check binary output error\n");
+    } else {
+        ctx->check_in_raw_msgpack_fd = fileno(fp);
+    }
+#endif
 
     ret = flb_output_config_map_set(ins, (void *) ctx);
     if (ret == -1) {
@@ -94,7 +112,92 @@ static int cb_stdout_init(struct flb_output_instance *ins,
     return 0;
 }
 
-static void cb_stdout_flush(const void *data, size_t bytes,
+static uint64_t clx_parse_cpuinfo(void) {
+    float f = 1.0;
+    char buf[256];
+
+    FILE* fp = fopen("/proc/cpuinfo", "r");
+    if (fp) {
+        while (fgets(buf, 256, fp)) {
+            if (!strncmp(buf, "model name", 10)) {
+                char* p = strchr(buf, '@');
+                if (p) {
+                    sscanf(++p, "%f", &f);
+                }
+                break;
+            }
+        }
+        fclose(fp);
+    }
+    if (f < 1.0) {
+        f = 1.0;  // if cannot get correct frequency - use TSC
+        printf("[warning] Could not get correct value of frequency. Values are in ticks.");
+    } else {
+        f *= 1.0e9;  // Value in 'model name' is in GHz
+    }
+    return (uint64_t)f;
+}
+
+static  uint64_t get_cpu_freq(void) {
+#ifdef USE_SLEEP_TO_GET_CPU_FREQUENCY
+    // Note:  Recent Intel CPUs have the TSC running at constant frequency.
+    static uint64_t clock = 0;
+    if (clock == 0) {
+        uint64_t t_start = read_hres_clock();
+        sleep(1);
+        uint64_t t_end = read_hres_clock();
+        clock = t_end - t_start;
+    }
+    return clock;
+#else
+    return clx_parse_cpuinfo();
+#endif
+}
+
+
+static inline uint64_t read_hres_clock(void) {
+    uint32_t low, high;
+    asm volatile ("rdtsc" : "=a" (low), "=d" (high));
+    return ((uint64_t)high << 32) | (uint64_t)low;
+}
+
+
+uint64_t clx_convert_cycles_to_usec(uint64_t cycles) {
+    static uint64_t freq = 0;
+    if (freq < 1) {
+        // initialize once
+        freq = get_cpu_freq();
+        if (freq == 1) {
+            freq = 1e6;  // time will be in ticks
+        }
+    }
+    uint64_t ret = cycles * 1e6 / freq;
+    return ret;
+}
+
+
+static void measure_recv_speed(const void *data, size_t bytes, struct flb_stdout_raw *ctx) {
+    if (ctx->ts_begin == 0) {
+        // set ts_begin on first data
+        ctx->ts_begin = read_hres_clock();
+    }
+
+    ctx->bytes_received += bytes;
+
+    if (ctx->bytes_received > 100*1024*1024) {// update timers on every 2 Mb
+        ctx->ts_end = read_hres_clock();
+        uint64_t t_diff_clocks = ctx->ts_end - ctx->ts_begin;
+        uint64_t time_diff = clx_convert_cycles_to_usec(t_diff_clocks);
+
+        printf ("received %"PRIu64" bytes in %"PRIu64" usec\n", ctx->bytes_received, time_diff );
+
+        ctx->bytes_received = 0;
+        ctx->ts_begin = ctx->ts_end;
+    }
+}
+
+
+static void cb_stdout_raw_flush(const void *data, size_t bytes,
                             const char *tag, int tag_len,
                             struct flb_input_instance *i_ins,
                             void *out_context,
@@ -102,13 +205,19 @@ static void cb_stdout_flush(const void *data, size_t bytes,
 {
     msgpack_unpacked result;
     size_t off = 0, cnt = 0;
-    struct flb_stdout *ctx = out_context;
+    struct flb_stdout_raw *ctx = out_context;
     flb_sds_t json;
     char *buf = NULL;
     (void) i_ins;
     (void) config;
+
+#ifdef MEASURE_SPEED
+    measure_recv_speed(data, bytes, ctx);
+#else  // MEASURE_SPEED
+
     struct flb_time tmp;
     msgpack_object *p;
+
 
     if (ctx->out_format != FLB_PACK_JSON_FORMAT_NONE) {
         json = flb_pack_msgpack_to_json_format(data, bytes,
@@ -138,30 +247,35 @@ static void cb_stdout_flush(const void *data, size_t bytes,
         buf[tag_len] = '\0';
         msgpack_unpacked_init(&result);
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
-            printf("[%zd] %s: [", cnt++, buf);
-            flb_time_pop_from_msgpack(&tmp, &result, &p);
-            printf("%"PRIu32".%09lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
-            msgpack_object_print(stdout, *p);
-            printf("]\n");
+             msgpack_object_print(stdout, result.data);
+             printf("\n\n");
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
     }
     fflush(stdout);
+#endif  // MEASURE_SPEED
+
+#ifdef CHECK_RAW_MSGPACK_INPUT
+            // to check that we recieved all data from in_raw_msgpack
+            write(ctx->check_in_raw_msgpack_fd, data, bytes);
+#endif
 
     FLB_OUTPUT_RETURN(FLB_OK);
 }
 
-static int cb_stdout_exit(void *data, struct flb_config *config)
+static int cb_stdout_raw_exit(void *data, struct flb_config *config)
 {
-    struct flb_stdout *ctx = data;
-
+    struct flb_stdout_raw *ctx = data;
     if (!ctx) {
         return 0;
     }
 
     flb_free(ctx);
     return 0;
+#ifdef CHECK_RAW_MSGPACK_INPUT
+    close(ctx->check_in_raw_msgpack_fd);
+#endif
 }
 
 /* Configuration properties map */
@@ -178,7 +292,7 @@ static struct flb_config_map config_map[] = {
     },
     {
      FLB_CONFIG_MAP_STR, "json_date_key", "date",
-     0, FLB_TRUE, offsetof(struct flb_stdout, json_date_key),
+     0, FLB_TRUE, offsetof(struct flb_stdout_raw, json_date_key),
     "Specifies the format of the date. Supported formats are double, iso8601 and epoch."
     },
 
@@ -187,12 +301,12 @@ static struct flb_config_map config_map[] = {
 };
 
 /* Plugin registration */
-struct flb_output_plugin out_stdout_plugin = {
-    .name         = "stdout",
-    .description  = "Prints events to STDOUT",
-    .cb_init      = cb_stdout_init,
-    .cb_flush     = cb_stdout_flush,
-    .cb_exit      = cb_stdout_exit,
+struct flb_output_plugin out_stdout_raw_plugin = {
+    .name         = "stdout_raw",
+    .description  = "Prints raw msgpack data withot timestamp to STDOUT",
+    .cb_init      = cb_stdout_raw_init,
+    .cb_flush     = cb_stdout_raw_flush,
+    .cb_exit      = cb_stdout_raw_exit,
     .flags        = 0,
     .config_map   = config_map
 };
