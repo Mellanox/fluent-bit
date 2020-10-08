@@ -247,13 +247,11 @@ static void cb_stdout_flush(const void *data, size_t bytes,
         buf[tag_len] = '\0';
         msgpack_unpacked_init(&result);
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
-            //printf("[%zd] %s: [", cnt++, buf);
-            //flb_time_pop_from_msgpack(&tmp, &result, &p);
-            //printf("%"PRIu32".%09lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
-            // msgpack_object_print(stdout, *p);
-            // printf("]\n");
-            msgpack_object_print(stdout, result.data);
-            printf("\n\n");
+            printf("[%zd] %s: [", cnt++, buf);
+            flb_time_pop_from_msgpack(&tmp, &result, &p);
+            printf("%"PRIu32".%09lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
+            msgpack_object_print(stdout, *p);
+            printf("]\n");
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
