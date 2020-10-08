@@ -165,6 +165,10 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
 
 
 void* init(const char* output_plugin_name, const char * host, const char * port, const char * socket_prefix) {
+    // TBD: make the next params generic
+    char measurement[] = "clx_measurement";
+    char influx_tag_keys[] = "source type port link_partner";
+
     raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
 
     char postfix[128] = "";
@@ -234,7 +238,9 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     in_data->buffer_ptr  = raw_ctx->buffer;
     in_data->server_addr = raw_ctx->server_addr;
     raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
-
+    if (strcmp(output_plugin_name, "influxdb") == 0) {
+        flb_input_set(raw_ctx->ctx, raw_ctx->in_ffd, "tag", measurement, NULL);
+    }
 #ifdef VERBOSE
     printf("i_ins = %p\n", raw_ctx->i_ins);
     printf("i_ins->data = %p\n", raw_ctx->i_ins->data);
@@ -264,6 +270,11 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Host", host, NULL);
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Port", port, NULL);
+
+    if (strcmp(output_plugin_name, "influxdb") == 0) {
+        flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "match", measurement, NULL);
+        flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Tag_Keys", influx_tag_keys, NULL);
+    }
 
     // Start the background worker
     flb_start(raw_ctx->ctx);
