@@ -29,7 +29,18 @@
 #define SERVER_SOCK_PATH "/tmp/fb_sock_server"
 #define CLIENT_SOCK_PATH "/tmp/fb_sock_client"
 
-// To check sockets cleanup
+
+// structures for list on key/val pairs of plugin parameters
+typedef struct param_pair_t {
+    char* name;
+    char* val;
+} param_pair_t;
+
+typedef struct plugin_params_t {
+    int num_params;
+    param_pair_t* params;
+} plugin_params_t;
+// =====================================
 
 typedef struct in_plugin_data_t {
     char * buffer_ptr;
@@ -164,10 +175,11 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
 }
 
 
-void* init(const char* output_plugin_name, const char * host, const char * port, const char * socket_prefix) {
-    // TBD: make the next params generic
+void* init(const char* output_plugin_name, const char * host, const char * port,
+           void* plugin_params, const char * socket_prefix) {
     char measurement[] = "clx_measurement";
     char influx_tag_keys[] = "source type port link_partner";
+    plugin_params_t* params = (plugin_params_t *) plugin_params;
 
     raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
 
@@ -199,12 +211,10 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     get_socket_path(CLIENT_SOCK_PATH, postfix, raw_ctx->client_addr );
     get_socket_path(SERVER_SOCK_PATH, postfix, raw_ctx->server_addr);
 
-    printf("API raw msgpack: init\n");
-    printf("Input %s:%s\n\n", host, port);
 
 #ifdef VERBOSE
-    printf("hello-word-init\n");
-    printf("input: %s:%s\n\n", host, port);
+    printf("API raw msgpack: init\n");
+    printf("Input %s:%s\n\n", host, port);
 
     printf("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
     printf("server path: \"%s\" -> \"%s\"\n\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
@@ -272,10 +282,18 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Port", port, NULL);
 
     if (strcmp(output_plugin_name, "influxdb") == 0) {
-        flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "match", measurement, NULL);
-        flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Tag_Keys", influx_tag_keys, NULL);
+        int i;
+        printf("SETTING OTPUT PARAMS NUM:%d'\n\n", params->num_params);
+        if (params != NULL) {
+            for (i = 0; i < params->num_params; i++) {
+                printf("SETTING OTPUT PARAM '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
+                flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, params->params[i].name, params->params[i].val, NULL);
+            }
+            flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "match", measurement, NULL);
+            (void) influx_tag_keys;
+            //flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Tag_Keys", influx_tag_keys, NULL);
+        }
     }
-
     // Start the background worker
     flb_start(raw_ctx->ctx);
 #ifdef VERBOSE
