@@ -267,7 +267,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
         int i;
         for (i = 0; i < params->num_params; i++) {
             printf("SETTING OTPUT PARAM '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
-	    if(strcmp(params->params[i].name, "tag") != 0) {
+	    if(strcmp(params->params[i].name, "tag_match_pair") != 0) {
                 flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, params->params[i].name, params->params[i].val, NULL);
             } else {
                 flb_input_set(raw_ctx->ctx, raw_ctx->in_ffd, "tag", params->params[i].val, NULL);
