@@ -177,8 +177,6 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
 
 void* init(const char* output_plugin_name, const char * host, const char * port,
            void* plugin_params, const char * socket_prefix) {
-    char measurement[] = "clx_measurement";
-    char influx_tag_keys[] = "source type port link_partner";
     plugin_params_t* params = (plugin_params_t *) plugin_params;
 
     raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
@@ -216,8 +214,8 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     printf("API raw msgpack: init\n");
     printf("Input %s:%s\n\n", host, port);
 
-    printf("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
-    printf("server path: \"%s\" -> \"%s\"\n\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
+    // printf("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
+    // printf("server path: \"%s\" -> \"%s\"\n\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
 #endif
 
     /* Initialize library */
@@ -231,12 +229,6 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     flb_service_set(raw_ctx->ctx, "Flush", "1", NULL); // to set flush timeout
     flb_service_set(raw_ctx->ctx, "Grace", "1", NULL);   // to set timeout before exit
 
-    // TBD(romanpr): find out why does it not work (see cio_file.c and flb_input_chunk.c)
-    // flb_service_set(ctx, "storage.path", "/labhome/romanpr/log/flb-storage", NULL);
-    // flb_service_set(ctx, "storage.sync", "normal", NULL);
-    // flb_service_set(ctx, "storage.checksum", "off", NULL);
-    // flb_service_set(ctx, "storage.backlog.mem_limit", "1024M", NULL);
-
     // create a client socket here to be ready to ring to "doorbell"
     raw_ctx->doorbell_cli = ipc_unix_sock_cli_create(raw_ctx->client_addr);
 #ifdef VERBOSE
@@ -248,21 +240,11 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     in_data->buffer_ptr  = raw_ctx->buffer;
     in_data->server_addr = raw_ctx->server_addr;
     raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
-    if (strcmp(output_plugin_name, "influxdb") == 0) {
-        flb_input_set(raw_ctx->ctx, raw_ctx->in_ffd, "tag", measurement, NULL);
-    }
-#ifdef VERBOSE
-    printf("i_ins = %p\n", raw_ctx->i_ins);
-    printf("i_ins->data = %p\n", raw_ctx->i_ins->data);
-#endif
     if (!raw_ctx->i_ins) {
         return NULL;
     }
 
     // TBD(romanpr): docs.fluentbit.io/manual/administration/buffering-and-storage
-    // flb_input_set(ctx, i_ins->id, "storage.type", "filesystem", NULL);
-    // TBD(romanpr): get the out plugin name from environment
-    // TBD(romanpr): test with Elastic AND with InfluxDB
 
     raw_ctx->out_ffd = -1;
     if (strlen(output_plugin_name) > 0) {  // simple check for plugin name
@@ -281,19 +263,20 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Host", host, NULL);
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Port", port, NULL);
 
-    if (strcmp(output_plugin_name, "influxdb") == 0) {
+    if (params != NULL) {
         int i;
-        printf("SETTING OTPUT PARAMS NUM:%d'\n\n", params->num_params);
-        if (params != NULL) {
-            for (i = 0; i < params->num_params; i++) {
-                printf("SETTING OTPUT PARAM '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
+        for (i = 0; i < params->num_params; i++) {
+            printf("SETTING OTPUT PARAM '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
+	    if(strcmp(params->params[i].name, "tag") != 0) {
                 flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, params->params[i].name, params->params[i].val, NULL);
+            } else {
+                flb_input_set(raw_ctx->ctx, raw_ctx->in_ffd, "tag", params->params[i].val, NULL);
+                flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "match", params->params[i].val, NULL);
+
             }
-            flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "match", measurement, NULL);
-            (void) influx_tag_keys;
-            //flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Tag_Keys", influx_tag_keys, NULL);
         }
     }
+
     // Start the background worker
     flb_start(raw_ctx->ctx);
 #ifdef VERBOSE
@@ -333,8 +316,8 @@ int finalize(void* api_ctx) {
 
 #ifdef VERBOSE
     printf("API raw msgpack: finalize\n");
-    printf("\t\t\t\t\t\tserver_addr '%s'\n", raw_ctx->server_addr);
-    printf("\t\t\t\t\t\tbuffer_addr '%p'\n", raw_ctx->buffer);
+    // printf("\t\t\t\t\t\tserver_addr '%s'\n", raw_ctx->server_addr);
+    // printf("\t\t\t\t\t\tbuffer_addr '%p'\n", raw_ctx->buffer);
 #endif
     // clean up socket
     close(raw_ctx->doorbell_cli);
