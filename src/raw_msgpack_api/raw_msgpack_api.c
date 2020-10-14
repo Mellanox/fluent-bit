@@ -294,7 +294,10 @@ int add_data(void* api_ctx, void* data, int len) {
     if (len == 0)
         return 0;
 #ifdef VERBOSE
-    // printf("Append raw data of len %d:\n", len);
+    printf("Append raw data of len %d\n", len);
+    if (len >= 8192 * 2) {
+        printf("\t\t\t\t\OVERFLOW!\n\n");
+    }
     // DumpHex(data, len);
 #endif
     memcpy(raw_ctx->buffer, data, len);
