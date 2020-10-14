@@ -137,15 +137,24 @@ static void cb_stdout_flush(const void *data, size_t bytes,
         memcpy(buf, tag, tag_len);
         buf[tag_len] = '\0';
         msgpack_unpacked_init(&result);
+        
+	// FILE* log_d = fopen("/tmp/recv_side_stdout.log", "a");
+
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
             printf("[%zd] %s: [", cnt++, buf);
             flb_time_pop_from_msgpack(&tmp, &result, &p);
             printf("%"PRIu32".%09lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
             msgpack_object_print(stdout, *p);
             printf("]\n");
+	    
+            // fprintf(log_d, "[");
+            // fprintf(log_d, "%"PRIu32".%06lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
+            // msgpack_object_print(log_d, *p);
+            // fprintf(log_d, "]\n");
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
+        // fclose(log_d);
     }
     fflush(stdout);
 
