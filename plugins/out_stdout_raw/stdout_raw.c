@@ -319,8 +319,8 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
              // print corrupted keys (names)
              check_msgpack_keys(log_d, result.data, false);
              // print data to log
-             pid_t tid = syscall(SYS_gettid);
-             fprintf(log_d,"tid = %d\n", tid);
+             //pid_t tid = syscall(SYS_gettid);
+             //fprintf(log_d,"tid = %d\n", tid);
              
              msgpack_object_print(log_d, result.data);
              fprintf(log_d, "\n");
