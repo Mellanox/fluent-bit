@@ -226,8 +226,8 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     if (!raw_ctx->ctx) {
         return NULL;
     }
-    flb_service_set(raw_ctx->ctx, "Flush", "1", NULL); // to set flush timeout
-    flb_service_set(raw_ctx->ctx, "Grace", "1", NULL);   // to set timeout before exit
+    flb_service_set(raw_ctx->ctx, "Flush", "0.1", NULL);
+    flb_service_set(raw_ctx->ctx, "Grace", "0.1", NULL);
 
     // create a client socket here to be ready to ring to "doorbell"
     raw_ctx->doorbell_cli = ipc_unix_sock_cli_create(raw_ctx->client_addr);
@@ -294,7 +294,7 @@ int add_data(void* api_ctx, void* data, int len) {
     if (len == 0)
         return 0;
 #ifdef VERBOSE
-    printf("Append raw data of len %d\n", len);
+    //printf("Append raw data of len %d\n", len);
     if (len >= 8192 * 2) {
         printf("\t\t\t\t\OVERFLOW!\n\n");
     }
