@@ -206,7 +206,7 @@ static void cb_stdout_flush(const void *data, size_t bytes,
 	    
             check_msgpack_keys_stdout(log_d, result.data, false);
             fprintf(log_d, "[");
-            fprintf(log_d, "%"PRIu32".%06lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
+            fprintf(log_d, "%"PRIu32".%06lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec / 1000);
             msgpack_object_print(log_d, *p);
             fprintf(log_d, "]\n");
         }
