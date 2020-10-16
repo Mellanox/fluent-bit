@@ -309,7 +309,7 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
         buf[tag_len] = '\0';
         msgpack_unpacked_init(&result);
         
-	FILE* log_d = fopen("/tmp/recv_side_stdout_raw.log", "a");
+	// FILE* log_d = fopen("/tmp/recv_side_stdout_raw.log", "a");
         
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
              msgpack_object_print(stdout, result.data);
@@ -317,18 +317,18 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
              fflush(stdout);
 
              // print corrupted keys (names)
-             check_msgpack_keys(log_d, result.data, false);
+             // check_msgpack_keys(log_d, result.data, false);
              // print data to log
              //pid_t tid = syscall(SYS_gettid);
              //fprintf(log_d,"tid = %d\n", tid);
              
-             msgpack_object_print(log_d, result.data);
-             fprintf(log_d, "\n");
-             fflush(stdout);             
+             // msgpack_object_print(log_d, result.data);
+             // fprintf(log_d, "\n");
+             // fflush(stdout);             
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
-        fclose(log_d);
+        // fclose(log_d);
     }
     
     fflush(stdout);

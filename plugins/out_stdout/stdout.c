@@ -195,7 +195,7 @@ static void cb_stdout_flush(const void *data, size_t bytes,
         buf[tag_len] = '\0';
         msgpack_unpacked_init(&result);
         
-	FILE* log_d = fopen("/tmp/recv_side_stdout.log", "a");
+	// FILE* log_d = fopen("/tmp/recv_side_stdout.log", "a");
 
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
             printf("[%zd] %s: [", cnt++, buf);
@@ -204,15 +204,15 @@ static void cb_stdout_flush(const void *data, size_t bytes,
             msgpack_object_print(stdout, *p);
             printf("]\n");
 	    
-            check_msgpack_keys_stdout(log_d, result.data, false);
-            fprintf(log_d, "[");
-            fprintf(log_d, "%"PRIu32".%06lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec / 1000);
-            msgpack_object_print(log_d, *p);
-            fprintf(log_d, "]\n");
+            // check_msgpack_keys_stdout(log_d, result.data, false);
+            // fprintf(log_d, "[");
+            // fprintf(log_d, "%"PRIu32".%06lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec / 1000);
+            // msgpack_object_print(log_d, *p);
+            // fprintf(log_d, "]\n");
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
-        fclose(log_d);
+        // fclose(log_d);
     }
     fflush(stdout);
 
