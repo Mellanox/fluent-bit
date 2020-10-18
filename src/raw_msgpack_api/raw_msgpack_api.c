@@ -47,6 +47,7 @@ typedef struct in_plugin_data_t {
     char * server_addr;
 } in_plugin_data_t;
 
+
 void get_socket_path(const char* name, const char* postfix, char* result) {
     char pid_str[16];
     sprintf(pid_str, "%d", getpid());
@@ -72,6 +73,7 @@ typedef struct raw_msgpack_api_context_t {
 
     int doorbell_cli;
     char *buffer;
+    int api_buf_len;
 } raw_msgpack_api_context_t;
 
 
@@ -236,7 +238,8 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 #endif
     in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
 
-    raw_ctx->buffer = (char*) calloc(8192 * 2, sizeof(char));
+    raw_ctx->api_buf_len = 8192 * 2; 
+    raw_ctx->buffer = (char*) calloc(raw_ctx->api_buf_len, sizeof(char));
     in_data->buffer_ptr  = raw_ctx->buffer;
     in_data->server_addr = raw_ctx->server_addr;
     raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
@@ -295,11 +298,12 @@ int add_data(void* api_ctx, void* data, int len) {
         return 0;
 #ifdef VERBOSE
     //printf("Append raw data of len %d\n", len);
-    if (len >= 8192 * 2) {
+    if (len >= raw_ctx->api_buf_len) {
         printf("\t\t\t\tOVERFLOW!\n\n");
     }
     // DumpHex(data, len);
 #endif
+    memset(raw_ctx->buffer, 'a', raw_ctx->api_buf_len);
     memcpy(raw_ctx->buffer, data, len);
     // TBD(romanpr): check this:  i_ins->context->p = data;
 
@@ -307,7 +311,7 @@ int add_data(void* api_ctx, void* data, int len) {
     //printf("ring the doorbell\n");
 #endif
     ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len);
-
+    memset(raw_ctx->buffer, 'b', raw_ctx->api_buf_len);
     return 0;
 }
 

@@ -96,29 +96,14 @@ static inline int pack_regex(msgpack_sbuffer *mp_sbuf, msgpack_packer *mp_pck,
 static int in_raw_msgpack_collect(struct flb_input_instance *ins,
                             struct flb_config *config, void *in_context)
 {
-
     int bytes = 0;
-    int pack_size;
-    int ret;
-    char *pack;
-    void *out_buf;
-    size_t out_size;
-    struct flb_time out_time;
     struct flb_raw_msgpack_config *ctx = in_context;
-    msgpack_packer mp_pck;
-    msgpack_sbuffer mp_sbuf;
 
     struct sockaddr_un client_address;
     socklen_t address_length  = sizeof(struct sockaddr_un);
     bytes = recvfrom(ctx->sock_fd,
                      (char *) &ctx->msg, sizeof(ctx->msg),
                      0, (struct sockaddr *) &client_address, &address_length);
-
-
-    // printf("collect : received byte from socket: %d\n", bytes);
-    int bytes_sent = sendto(ctx->sock_fd,
-                            (char *) &ctx->msg, sizeof(ctx->msg),
-                            0, (struct sockaddr *) &client_address, address_length);
 
     flb_plg_trace(ctx->ins, "stdin read() = %i", bytes);
 
@@ -132,10 +117,28 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
         flb_engine_exit(config);
         return -1;
     }
-    // ctx->buf_len += bytes;
-    // ctx->buf[ctx->buf_len] = '\0';
-    // printf ("recieved handshake. ready to deal with real data: (ptr=%p , len=%d)\n", ctx->ptr, ctx->msg.data_len);
+    // printf("[debug FLB] [in_raw_msgpack] input_chunk_append_raw of len %d\n", ctx->msg.data_len);
+
+    // char tmp_buf[5000]; 
+    // size_t data_len =  ctx->msg.data_len;
+
+    // memcpy(tmp_buf, ctx->ptr, data_len);
+   
+    // msgpack_unpacked result;
+    // size_t off = 0;
+    // msgpack_unpacked_init(&result);
+    
+    // while (msgpack_unpack_next(&result, tmp_buf, data_len, &off) == MSGPACK_UNPACK_SUCCESS) {
+    //     printf("[in_raw_msgpack] check\n");
+    //     msgpack_object_print(stdout, result.data);
+    //     printf("\n\n");
+    // }
+    // fflush(stdout);
     flb_input_chunk_append_raw(ins, NULL, 0, ctx->ptr, ctx->msg.data_len);
+
+    int bytes_sent = sendto(ctx->sock_fd,
+                           (char *) &ctx->msg, sizeof(ctx->msg),
+                           0, (struct sockaddr *) &client_address, address_length);
 
     return 0;
 }
@@ -166,15 +169,10 @@ static int in_raw_msgpack_init(struct flb_input_instance *in,
     ctx->ins = in;
 
     // data pointer
-    printf ("check init pointer %p\n", data);
     in_plugin_data_t *in_data = (in_plugin_data_t *)data;
     ctx->ptr = in_data->buffer_ptr;
 
-
-    printf("pointer %p is set to be buffer pointer\n", ctx->ptr);
-
     strncpy(ctx->unix_sock_path, in_data->server_address, sizeof(ctx->unix_sock_path));
-    printf("\n\n\n server socket: %s, should be %s\n\n\n",ctx->unix_sock_path, in_data->server_address);
     set_sock_fd(ctx);
 
 

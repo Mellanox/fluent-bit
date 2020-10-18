@@ -25,6 +25,7 @@
 #include <fluent-bit/flb_pack.h>
 #include <fluent-bit/flb_config_map.h>
 #include <msgpack.h>
+#include <time.h>
 
 #include "stdout_raw.h"
 #include "stdio.h"
@@ -277,8 +278,8 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
     measure_recv_speed(data, bytes, ctx);
 #else  // MEASURE_SPEED
 
-    struct flb_time tmp;
-    msgpack_object *p;
+    // struct flb_time tmp;
+    // msgpack_object *p;
 
 
     if (ctx->out_format != FLB_PACK_JSON_FORMAT_NONE) {
@@ -312,15 +313,19 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
 	// FILE* log_d = fopen("/tmp/recv_side_stdout_raw.log", "a");
         
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
+             // gettimeofday(&tv, NULL);
+             // time_in_micros = 1000000 * tv.tv_sec + tv.tv_usec;
+             // printf("[stdout_raw] inside of unpack loop: ts %lu\n", time_in_micros);
+             
              msgpack_object_print(stdout, result.data);
              printf("\n\n");
              fflush(stdout);
 
              // print corrupted keys (names)
-             // check_msgpack_keys(log_d, result.data, false);
+             // check_msgpack_keys(stdout, result.data, false);
              // print data to log
-             //pid_t tid = syscall(SYS_gettid);
-             //fprintf(log_d,"tid = %d\n", tid);
+             // pid_t tid = syscall(SYS_gettid);
+             // fprintf(log_d,"tid = %d\n", tid);
              
              // msgpack_object_print(log_d, result.data);
              // fprintf(log_d, "\n");
