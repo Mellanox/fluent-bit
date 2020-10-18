@@ -213,11 +213,10 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 
 
 #ifdef VERBOSE
-    printf("API raw msgpack: init\n");
-    printf("Input %s:%s\n\n", host, port);
+    printf("[Raw Msgpack API] init\n");
 
-    // printf("\n\n\n\nsocket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
-    // printf("server path: \"%s\" -> \"%s\"\n\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
+    printf("[Raw Msgpack API] client socket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
+    printf("[Raw Msgpack API] server socket path: \"%s\" -> \"%s\"\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
 #endif
 
     /* Initialize library */
@@ -234,7 +233,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     // create a client socket here to be ready to ring to "doorbell"
     raw_ctx->doorbell_cli = ipc_unix_sock_cli_create(raw_ctx->client_addr);
 #ifdef VERBOSE
-    printf("created client sock %d\n", raw_ctx->doorbell_cli);
+    printf("[Raw Msgpack API] created client sock %d\n", raw_ctx->doorbell_cli);
 #endif
     in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
 
@@ -259,7 +258,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     }
 
 #ifdef VERBOSE
-    printf("out_ffd = %d\n", raw_ctx->out_ffd);
+    printf("[Raw Msgpack API] out_ffd = %d\n", raw_ctx->out_ffd);
 #endif
     // flb_output_set(ctx, out_ffd, "match", "test", NULL);
 
@@ -269,7 +268,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     if (params != NULL) {
         int i;
         for (i = 0; i < params->num_params; i++) {
-            printf("SETTING OTPUT PARAM '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
+            printf("[Raw Msgpack API] Setting ouptut plugin parameter '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
 	    if(strcmp(params->params[i].name, "tag_match_pair") != 0) {
                 flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, params->params[i].name, params->params[i].val, NULL);
             } else {
@@ -283,7 +282,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
     // Start the background worker
     flb_start(raw_ctx->ctx);
 #ifdef VERBOSE
-    printf("init finished\n\n");
+    printf("[Raw Msgpack API] init finished\n\n");
 #endif
     return (void*) raw_ctx;
 }
@@ -299,7 +298,7 @@ int add_data(void* api_ctx, void* data, int len) {
 #ifdef VERBOSE
     //printf("Append raw data of len %d\n", len);
     if (len >= raw_ctx->api_buf_len) {
-        printf("\t\t\t\tOVERFLOW!\n\n");
+        printf("[Raw Msgpack API] buffer overflow!\n\n");
     }
     // DumpHex(data, len);
 #endif
@@ -307,9 +306,6 @@ int add_data(void* api_ctx, void* data, int len) {
     memcpy(raw_ctx->buffer, data, len);
     // TBD(romanpr): check this:  i_ins->context->p = data;
 
-#ifdef VERBOSE
-    //printf("ring the doorbell\n");
-#endif
     ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len);
     memset(raw_ctx->buffer, 'b', raw_ctx->api_buf_len);
     return 0;
@@ -322,7 +318,7 @@ int finalize(void* api_ctx) {
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
 
 #ifdef VERBOSE
-    printf("API raw msgpack: finalize\n");
+    printf("[Raw Msgpack API] finalize\n");
     // printf("\t\t\t\t\t\tserver_addr '%s'\n", raw_ctx->server_addr);
     // printf("\t\t\t\t\t\tbuffer_addr '%p'\n", raw_ctx->buffer);
 #endif
