@@ -39,21 +39,18 @@ int create_unix_sock(char *sock_path) {
     struct sockaddr_un server_address;
 
     if ((socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0)) < 0) {
-        printf("Failed to create client unix sock\n");
+        printf("[Fluent Bit] [in_raw_msgpack] Failed to create client unix sock\n");
         return -1;
     }
-
-    printf("Creating Unix Domain socket: %s,  socket=%d\n", sock_path, socket_fd);
 
     memset(&server_address, 0, sizeof(struct sockaddr_un));
     server_address.sun_family = AF_UNIX;
     strcpy(server_address.sun_path, sock_path);
-    // strcpy(server_address.sun_path, "./UDSDGCLNT");
 
     unlink(sock_path);
     if (bind(socket_fd, (const struct sockaddr *) &server_address, sizeof(struct sockaddr_un)) < 0) {
         close(socket_fd);
-        printf("Failed to bind client unix sock\n");
+        printf("[Fluent Bit] [in_raw_msgpack] Failed to bind client unix sock\n");
         return -1;
     }
     return socket_fd;
@@ -64,14 +61,12 @@ int set_sock_fd(struct flb_raw_msgpack_config *ctx) {
     ctx->sock_fd = create_unix_sock(ctx->unix_sock_path);
 
     if (ctx->sock_fd < 0)
-        printf("failed to create a socket\n");
+        printf("[Fluent Bit] [in_raw_msgpack] Failed to create a socket\n");
         return -1;
     if ((listen(ctx->sock_fd, 5)) != 0) {
-        printf("Listen failed...\n");
+        printf("[Fluent Bit] [in_raw_msgpack] Listen on socket failed...\n");
         return -1;
     }
-    else
-        printf("Server listening..\n");
     return 0;
 }
 
@@ -112,28 +107,12 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
     }
 
     if (bytes <= 0) {
-        printf ("paused, cant recieve the data\n");
+        printf ("[Fluent Bit] [in_raw_msgpack] paused, cannot receive the data\n");
         flb_input_collector_pause(ctx->coll_fd, ctx->ins);
         flb_engine_exit(config);
         return -1;
     }
-    // printf("[debug FLB] [in_raw_msgpack] input_chunk_append_raw of len %d\n", ctx->msg.data_len);
-
-    // char tmp_buf[5000]; 
-    // size_t data_len =  ctx->msg.data_len;
-
-    // memcpy(tmp_buf, ctx->ptr, data_len);
-   
-    // msgpack_unpacked result;
-    // size_t off = 0;
-    // msgpack_unpacked_init(&result);
     
-    // while (msgpack_unpack_next(&result, tmp_buf, data_len, &off) == MSGPACK_UNPACK_SUCCESS) {
-    //     printf("[in_raw_msgpack] check\n");
-    //     msgpack_object_print(stdout, result.data);
-    //     printf("\n\n");
-    // }
-    // fflush(stdout);
     flb_input_chunk_append_raw(ins, NULL, 0, ctx->ptr, ctx->msg.data_len);
 
     int bytes_sent = sendto(ctx->sock_fd,
@@ -194,7 +173,7 @@ static int in_raw_msgpack_init(struct flb_input_instance *in,
     /* Set the context */
     flb_input_set_context(in, ctx);
 
-    /* Collect upon data available on the standard input */
+    /* Collect data from buffer upon signal on socket */
     ret = flb_input_set_collector_event(in,
                                         in_raw_msgpack_collect,
                                         ctx->sock_fd,
@@ -226,7 +205,8 @@ struct flb_input_plugin in_raw_msgpack_plugin = {
     .description  = "input raw Message Pack data",
     .cb_init      = in_raw_msgpack_init,
     .cb_pre_run   = NULL,
-    .cb_collect   = NULL, //in_raw_msgpack_collect,
+    // we do not need to set callback here, since we set flb_input_set_collector_event to listen to our socket
+    .cb_collect   = NULL, //in_raw_msgpack_collect, 
     .cb_flush_buf = NULL,
     .cb_exit      = in_raw_msgpack_exit
 };
