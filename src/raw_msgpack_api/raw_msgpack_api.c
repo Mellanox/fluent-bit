@@ -121,11 +121,11 @@ int ipc_unix_sock_cli_create(char *sock_path) {
     struct sockaddr_un client_address;
 
     if ((socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0)) < 0) {
-        printf("Failed to create client unix sock\n");
+        printf("[Raw Msgpack API] Failed to create client unix sock\n");
         return -1;
     }
 #ifdef VERBOSE
-    printf("Creating Unix Domain socket: %s,  socket=%d\n", sock_path, socket_fd);
+    printf("[Raw Msgpack API] Creating Unix Domain socket: %s,  socket=%d\n", sock_path, socket_fd);
 #endif
     memset(&client_address, 0, sizeof(struct sockaddr_un));
     client_address.sun_family = AF_UNIX;
@@ -135,7 +135,7 @@ int ipc_unix_sock_cli_create(char *sock_path) {
     unlink(sock_path);
     if (bind(socket_fd, (const struct sockaddr *) &client_address, sizeof(struct sockaddr_un)) < 0) {
         close(socket_fd);
-        printf("Failed to bind client unix sock\n");
+        printf("[Raw Msgpack API] Failed to bind client unix sock\n");
         return -1;
     }
     return socket_fd;
@@ -188,7 +188,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
         strcpy(postfix, socket_prefix);
     } else {
         strcat(postfix, "-");
-        printf("Warning: no socket prefix");
+        printf("[Raw Msgpack API] Warning: no socket prefix");
     }
     strcat(postfix, "_");
     if (strlen(output_plugin_name) > 0) {
@@ -213,7 +213,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 
 
 #ifdef VERBOSE
-    printf("[Raw Msgpack API] init\n");
+    printf("[Raw Msgpack API] Initialization started.\n");
 
     printf("[Raw Msgpack API] client socket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
     printf("[Raw Msgpack API] server socket path: \"%s\" -> \"%s\"\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
@@ -221,10 +221,8 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 
     /* Initialize library */
     raw_ctx->ctx = flb_create();
-#ifdef VERBOSE
-    printf("ctx = %p\n", raw_ctx->ctx);
-#endif
     if (!raw_ctx->ctx) {
+        printf("[Raw Msgpack API] could not create flb context. Returning Null.\n");
         return NULL;
     }
     flb_service_set(raw_ctx->ctx, "Flush", "0.1", NULL);
@@ -237,7 +235,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 #endif
     in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
 
-    raw_ctx->api_buf_len = 8192 * 2; 
+    raw_ctx->api_buf_len = 8192 * 2;
     raw_ctx->buffer = (char*) calloc(raw_ctx->api_buf_len, sizeof(char));
     in_data->buffer_ptr  = raw_ctx->buffer;
     in_data->server_addr = raw_ctx->server_addr;
@@ -257,19 +255,17 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
         raw_ctx->out_ffd = flb_output(raw_ctx->ctx, "forward", NULL);
     }
 
-#ifdef VERBOSE
-    printf("[Raw Msgpack API] out_ffd = %d\n", raw_ctx->out_ffd);
-#endif
-    // flb_output_set(ctx, out_ffd, "match", "test", NULL);
-
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Host", host, NULL);
     flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "Port", port, NULL);
 
     if (params != NULL) {
         int i;
+        if (params->num_params > 0) {
+            printf("\n[Raw Msgpack API] Setting '%s' ouptut plugin parameters:\n", output_plugin_name);
+        }
         for (i = 0; i < params->num_params; i++) {
-            printf("[Raw Msgpack API] Setting ouptut plugin parameter '%s' to '%s'\n\n", params->params[i].name, params->params[i].val);
-	    if(strcmp(params->params[i].name, "tag_match_pair") != 0) {
+            printf("\t\t\t\t'%s' to '%s'\n", params->params[i].name, params->params[i].val);
+	    if (strcmp(params->params[i].name, "tag_match_pair") != 0) {
                 flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, params->params[i].name, params->params[i].val, NULL);
             } else {
                 flb_input_set(raw_ctx->ctx, raw_ctx->in_ffd, "tag", params->params[i].val, NULL);
