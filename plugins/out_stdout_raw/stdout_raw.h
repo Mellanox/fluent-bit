@@ -27,9 +27,13 @@
 
 struct flb_stdout_raw {
     // to check in_raw_msgpack
-    int check_in_raw_msgpack_fd;
+    bool     use_bin_file_check;
+    char*    check_file_path;
+    int      check_in_raw_msgpack_fd;
 
     // to measure time
+    bool     measure_speed;
+    uint64_t bytes_milestone;
     uint64_t bytes_received;
     uint64_t ts_begin;
     uint64_t ts_end;

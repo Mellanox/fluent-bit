@@ -30,9 +30,7 @@
 #include "stdout_raw.h"
 #include "stdio.h"
 #include <sys/types.h>
-#include <sys/syscall.h> 
-//#define CHECK_RAW_MSGPACK_INPUT
-//#define MEASURE_SPEED
+#include <sys/syscall.h>
 
 static int cb_stdout_raw_init(struct flb_output_instance *ins,
                               struct flb_config *config, void *data)
@@ -50,26 +48,52 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
         return -1;
     }
     ctx->ins = ins;
-#ifdef MEASURE_SPEED
-    ctx->ts_begin       = 0;
-    ctx->ts_end         = 0;
-    ctx->bytes_received = 0;
-#endif // MEASURE_SPEED
-
-#ifdef CHECK_RAW_MSGPACK_INPUT
-    FILE *fp = fopen("/labhome/romanpr/workspace/git/fluent-bit/build/msgpackcheck.bin","wb");
-    if (fp == NULL) {
-         printf("cant open file for check binary output error\n");
-    } else {
-        ctx->check_in_raw_msgpack_fd = fileno(fp);
-    }
-#endif
 
     ret = flb_output_config_map_set(ins, (void *) ctx);
     if (ret == -1) {
         flb_free(ctx);
         return -1;
     }
+
+    ctx->bytes_milestone = 1024*1024; // default is 1 MB
+    tmp = flb_output_get_property("measure_speed_MB_milestone", ins);
+    if (tmp) {
+        ctx->bytes_milestone = atoi(tmp) * 1024 * 1024;
+    }
+
+    ctx->measure_speed = false;
+    tmp = flb_output_get_property("measure_speed", ins);
+    if (tmp) {
+        if (flb_utils_bool(tmp) == FLB_TRUE) {
+            ctx->measure_speed  = 1;
+            ctx->ts_begin       = 0;
+            ctx->ts_end         = 0;
+            ctx->bytes_received = 0;
+
+            printf("[STDOUT_RAW] Speed measurements will be printed each %d bytes (%d MB).\n",
+                                    ctx->bytes_milestone, ctx->bytes_milestone/1024/1024);
+        }
+    }
+
+
+
+    ctx->use_bin_file_check = 0;
+    tmp = flb_output_get_property("check_file_path", ins);
+    if (tmp) {
+        ctx->use_bin_file_check = 1;
+        ctx->check_file_path = strdup(tmp);
+    }
+
+    if (ctx->use_bin_file_check) {
+        FILE *fp = fopen(ctx->check_file_path, "wb");
+        if (fp == NULL) {
+            printf("cant open file for check binary output error\n");
+            ctx->check_in_raw_msgpack_fd = NULL;
+        } else {
+            ctx->check_in_raw_msgpack_fd = fileno(fp);
+        }
+    }
+
 
     ctx->out_format = FLB_PACK_JSON_FORMAT_NONE;
     tmp = flb_output_get_property("format", ins);
@@ -186,7 +210,7 @@ static void measure_recv_speed(const void *data, size_t bytes, struct flb_stdout
 
     ctx->bytes_received += bytes;
 
-    if (ctx->bytes_received > 100*1024*1024) {// update timers on every 2 Mb
+    if (ctx->bytes_received > ctx->bytes_milestone) {
         ctx->ts_end = read_hres_clock();
         uint64_t t_diff_clocks = ctx->ts_end - ctx->ts_begin;
         uint64_t time_diff = clx_convert_cycles_to_usec(t_diff_clocks);
@@ -274,75 +298,75 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
     (void) i_ins;
     (void) config;
 
-#ifdef MEASURE_SPEED
-    measure_recv_speed(data, bytes, ctx);
-#else  // MEASURE_SPEED
+    if (ctx->measure_speed) {
+        measure_recv_speed(data, bytes, ctx);
+    } else {
+        // struct flb_time tmp;
+        // msgpack_object *p;
 
-    // struct flb_time tmp;
-    // msgpack_object *p;
 
+        if (ctx->out_format != FLB_PACK_JSON_FORMAT_NONE) {
+            json = flb_pack_msgpack_to_json_format(data, bytes,
+                                                ctx->out_format,
+                                                ctx->json_date_format,
+                                                ctx->date_key);
+            write(STDOUT_FILENO, json, flb_sds_len(json));
+            flb_sds_destroy(json);
 
-    if (ctx->out_format != FLB_PACK_JSON_FORMAT_NONE) {
-        json = flb_pack_msgpack_to_json_format(data, bytes,
-                                               ctx->out_format,
-                                               ctx->json_date_format,
-                                               ctx->date_key);
-        write(STDOUT_FILENO, json, flb_sds_len(json));
-        flb_sds_destroy(json);
+            /*
+            * If we are 'not' in json_lines mode, we need to add an extra
+            * breakline.
+            */
+            if (ctx->out_format != FLB_PACK_JSON_FORMAT_LINES) {
+                printf("\n");
+            }
+            fflush(stdout);
+        } else {
+            /* A tag might not contain a NULL byte */
+            buf = flb_malloc(tag_len + 1);
+            if (!buf) {
+                flb_errno();
+                FLB_OUTPUT_RETURN(FLB_RETRY);
+            }
+            memcpy(buf, tag, tag_len);
+            buf[tag_len] = '\0';
+            msgpack_unpacked_init(&result);
 
-        /*
-         * If we are 'not' in json_lines mode, we need to add an extra
-         * breakline.
-         */
-        if (ctx->out_format != FLB_PACK_JSON_FORMAT_LINES) {
-            printf("\n");
+        // FILE* log_d = fopen("/tmp/recv_side_stdout_raw.log", "a");
+
+            while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
+                // gettimeofday(&tv, NULL);
+                // time_in_micros = 1000000 * tv.tv_sec + tv.tv_usec;
+                // printf("[stdout_raw] inside of unpack loop: ts %lu\n", time_in_micros);
+
+                msgpack_object_print(stdout, result.data);
+                printf("\n\n");
+                fflush(stdout);
+
+                // print corrupted keys (names)
+                // check_msgpack_keys(stdout, result.data, false);
+                // print data to log
+                // pid_t tid = syscall(SYS_gettid);
+                // fprintf(log_d,"tid = %d\n", tid);
+
+                // msgpack_object_print(log_d, result.data);
+                // fprintf(log_d, "\n");
+                // fflush(stdout);
+            }
+            msgpack_unpacked_destroy(&result);
+            flb_free(buf);
+            // fclose(log_d);
         }
+
         fflush(stdout);
-    }
-    else {
-        /* A tag might not contain a NULL byte */
-        buf = flb_malloc(tag_len + 1);
-        if (!buf) {
-            flb_errno();
-            FLB_OUTPUT_RETURN(FLB_RETRY);
-        }
-        memcpy(buf, tag, tag_len);
-        buf[tag_len] = '\0';
-        msgpack_unpacked_init(&result);
-        
-	// FILE* log_d = fopen("/tmp/recv_side_stdout_raw.log", "a");
-        
-        while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
-             // gettimeofday(&tv, NULL);
-             // time_in_micros = 1000000 * tv.tv_sec + tv.tv_usec;
-             // printf("[stdout_raw] inside of unpack loop: ts %lu\n", time_in_micros);
-             
-             msgpack_object_print(stdout, result.data);
-             printf("\n\n");
-             fflush(stdout);
+    }  // measure_speed
 
-             // print corrupted keys (names)
-             // check_msgpack_keys(stdout, result.data, false);
-             // print data to log
-             // pid_t tid = syscall(SYS_gettid);
-             // fprintf(log_d,"tid = %d\n", tid);
-             
-             // msgpack_object_print(log_d, result.data);
-             // fprintf(log_d, "\n");
-             // fflush(stdout);             
-        }
-        msgpack_unpacked_destroy(&result);
-        flb_free(buf);
-        // fclose(log_d);
-    }
-    
-    fflush(stdout);
-#endif  // MEASURE_SPEED
-
-#ifdef CHECK_RAW_MSGPACK_INPUT
-            // to check that we recieved all data from in_raw_msgpack
+    if (ctx->use_bin_file_check) {
+        // to check that we recieved all data from in_raw_msgpack
+        if (ctx->check_in_raw_msgpack_fd) {
             write(ctx->check_in_raw_msgpack_fd, data, bytes);
-#endif
+        }
+    }
 
     FLB_OUTPUT_RETURN(FLB_OK);
 }
@@ -353,16 +377,35 @@ static int cb_stdout_raw_exit(void *data, struct flb_config *config)
     if (!ctx) {
         return 0;
     }
-
     flb_free(ctx);
     return 0;
-#ifdef CHECK_RAW_MSGPACK_INPUT
-    close(ctx->check_in_raw_msgpack_fd);
-#endif
+    if (ctx->use_bin_file_check) {
+        if (ctx->check_file_path) {
+            free(ctx->check_file_path);
+        }
+        if (ctx->check_in_raw_msgpack_fd) {
+            close(ctx->check_in_raw_msgpack_fd);
+        }
+    }
 }
 
 /* Configuration properties map */
 static struct flb_config_map config_map[] = {
+    {
+     FLB_CONFIG_MAP_STR, "check_file_path", NULL,
+     0, FLB_FALSE, 0,
+     "Specifies the binary file path to check end-to-end data transfer."
+    },
+    {
+     FLB_CONFIG_MAP_BOOL, "measure_speed", false,
+     0, FLB_FALSE, 0,
+     "Specifies speed measuring mode. Disables data dumping."
+    },
+    {
+     FLB_CONFIG_MAP_INT, "measure_speed_MB_milestone", NULL,
+     0, FLB_FALSE, 0,
+     "Specifies speed measuring parameter. Measurings will be printed each MB_milestone megabytes"
+    },
     {
      FLB_CONFIG_MAP_STR, "format", NULL,
      0, FLB_FALSE, 0,
