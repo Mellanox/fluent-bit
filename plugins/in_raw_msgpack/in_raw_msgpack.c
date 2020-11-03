@@ -112,8 +112,9 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
         flb_engine_exit(config);
         return -1;
     }
-    
-    flb_input_chunk_append_raw(ins, NULL, 0, ctx->ptr, ctx->msg.data_len);
+
+    // flb_input_chunk_append_raw(ins, NULL, 0, ctx->ptr, ctx->msg.data_len);
+    flb_input_chunk_append_raw(ins, NULL, 0, ctx->msg.data_buf, ctx->msg.data_len);
 
     int bytes_sent = sendto(ctx->sock_fd,
                            (char *) &ctx->msg, sizeof(ctx->msg),
@@ -149,7 +150,7 @@ static int in_raw_msgpack_init(struct flb_input_instance *in,
 
     // data pointer
     in_plugin_data_t *in_data = (in_plugin_data_t *)data;
-    ctx->ptr = in_data->buffer_ptr;
+    // ctx->ptr = in_data->buffer_ptr;
 
     strncpy(ctx->unix_sock_path, in_data->server_address, sizeof(ctx->unix_sock_path));
     set_sock_fd(ctx);
@@ -206,7 +207,7 @@ struct flb_input_plugin in_raw_msgpack_plugin = {
     .cb_init      = in_raw_msgpack_init,
     .cb_pre_run   = NULL,
     // we do not need to set callback here, since we set flb_input_set_collector_event to listen to our socket
-    .cb_collect   = NULL, //in_raw_msgpack_collect, 
+    .cb_collect   = NULL, //in_raw_msgpack_collect,
     .cb_flush_buf = NULL,
     .cb_exit      = in_raw_msgpack_exit
 };

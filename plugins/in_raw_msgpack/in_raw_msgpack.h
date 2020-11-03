@@ -31,14 +31,15 @@ typedef struct in_plugin_data_t {
 } in_plugin_data_t;
 
 typedef struct doorbell_msg_t {
-    int data_len;
+    int   data_len;
+    char* data_buf;
 } doorbell_msg_t;
 
 struct flb_raw_msgpack_config {
     // from 'stdin'
     // int  fd;
     int  coll_fd;
-    void* ptr;          // to point either to buffer or to shared memory
+    // void* ptr;          // to point either to buffer or to shared memory
 
     int  buf_len;                     /* read buffer length    */
     char buf[8192 * 2];               /* read buffer: 16Kb max */

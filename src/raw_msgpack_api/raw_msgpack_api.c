@@ -49,18 +49,10 @@ typedef struct in_plugin_data_t {
 
 
 void get_socket_path(const char* name, const char* postfix, char* result) {
-    char pid_str[16];
-    sprintf(pid_str, "%d", getpid());
-    strncpy(result, name, strlen(name));
-    strcat(result, "_");
-    strcat(result, pid_str);
-    strcat(result, "_");
-    strcat(result, postfix);
+    sprintf(result, "%s_%d_%s", name, getpid(), postfix);
 }
 
 
-
-// TBD(romanpr): refactor
 typedef struct raw_msgpack_api_context_t {
     char client_addr[256];
     char server_addr[256];
@@ -72,13 +64,14 @@ typedef struct raw_msgpack_api_context_t {
     int out_ffd;
 
     int doorbell_cli;
-    char *buffer;
-    int api_buf_len;
+    // char *buffer;
+    // int api_buf_len;
 } raw_msgpack_api_context_t;
 
 
 typedef struct doorbell_msg_t {
-    int data_len;
+    int   data_len;
+    char* buffer;
 } doorbell_msg_t;
 
 
@@ -142,9 +135,36 @@ int ipc_unix_sock_cli_create(char *sock_path) {
 }
 
 
-bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_len) {
+// reallocation does not work
+// bool prepare_buffer(raw_msgpack_api_context_t* raw_ctx, size_t new_size) {
+//     if (!raw_ctx->buffer) {
+//         raw_ctx->api_buf_len = 2048 * 16;
+//         raw_ctx->buffer = (char*) calloc(raw_ctx->api_buf_len, sizeof(char));
+//     }
+
+//     if (new_size > raw_ctx->api_buf_len) {
+//         // realloc data if buffer size is not sufficient
+//         while (new_size > raw_ctx->api_buf_len) {
+//             raw_ctx->api_buf_len *= 2;
+//         }
+//         printf("[Raw Msgpack API] buffer size was increased to %d to fit data of size %zu.\n",
+//                                                                 raw_ctx->api_buf_len, new_size);
+//         char* tmp = (void*) realloc(raw_ctx->buffer, sizeof(char) * raw_ctx->api_buf_len);
+//         if (tmp) {
+//             raw_ctx->buffer = tmp;
+//             return true;
+//         }
+//         printf("[Raw Msgpack API] [error] cannot realloc buffer");
+//         return false;
+//     }
+//     return true;
+// }
+
+
+bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_len, char* data_buf) {
     doorbell_msg_t ring_msg;
     ring_msg.data_len = data_len;
+    ring_msg.buffer   = data_buf;
     int msg_len = sizeof(ring_msg);
 
     socklen_t address_length = sizeof(struct sockaddr_un);
@@ -157,11 +177,11 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
     server_address.sun_family = AF_UNIX;
     strcpy(server_address.sun_path, raw_ctx->server_addr);
 
-    // TBD(romanpr): to put timeout on socket
     bytes_sent     = sendto(client_fd,
                             (char *) &ring_msg, msg_len,
                             0, (struct sockaddr *) &server_address,
                             address_length);
+    (void) bytes_sent;
     // printf("bytes_sent = %d \n", bytes_sent);
 
     bytes_received = recvfrom(client_fd,
@@ -177,47 +197,40 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
 }
 
 
-void* init(const char* output_plugin_name, const char * host, const char * port,
-           void* plugin_params, const char * socket_prefix) {
-    plugin_params_t* params = (plugin_params_t *) plugin_params;
-
-    raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
-
+void prepare_socket_names(raw_msgpack_api_context_t* raw_ctx, const char* output_plugin_name,
+                          const char * host, const char * port, const char * socket_prefix) {
     char postfix[128] = "";
-    if (strlen(socket_prefix) > 0) {
-        strcpy(postfix, socket_prefix);
-    } else {
-        strcat(postfix, "-");
-        printf("[Raw Msgpack API] Warning: no socket prefix");
-    }
-    strcat(postfix, "_");
-    if (strlen(output_plugin_name) > 0) {
-        strcat(postfix, output_plugin_name);
-    } else {
-        strcat(postfix, "defPlugin");
-    }
-    strcat(postfix, "_");
-    if (strlen(host) > 0) {
-        strcat(postfix, host);
-    } else {
-        strcat(postfix, "defHost");
-    }
-    strcat(postfix, "_");
-    if (strlen(host) > 0) {
-        strcat(postfix, port);
-    } else {
-        strcat(postfix, "defPort");
-    }
+    bool is_prefix = strlen(socket_prefix) > 0;
+    bool is_plugin = strlen(output_plugin_name) > 0;
+    bool is_host = strlen(host) > 0;
+    bool is_port = strlen(port) > 0;
+
+    sprintf(postfix, "%s_%s_%s_%s", (is_prefix ? socket_prefix      : "-"),
+                                    (is_plugin ? output_plugin_name : "defPluguin"),
+                                    (is_host   ? host               : "defHost"),
+                                    (is_port   ? port               : "defPort"));
+
     get_socket_path(CLIENT_SOCK_PATH, postfix, raw_ctx->client_addr );
     get_socket_path(SERVER_SOCK_PATH, postfix, raw_ctx->server_addr);
 
 
 #ifdef VERBOSE
-    printf("[Raw Msgpack API] Initialization started.\n");
-
     printf("[Raw Msgpack API] client socket path: \"%s\" -> \"%s\"\n", CLIENT_SOCK_PATH, raw_ctx->client_addr);
     printf("[Raw Msgpack API] server socket path: \"%s\" -> \"%s\"\n", SERVER_SOCK_PATH, raw_ctx->server_addr);
 #endif
+}
+
+
+void* init(const char* output_plugin_name, const char * host, const char * port,
+           void* plugin_params, const char * socket_prefix) {
+#ifdef VERBOSE
+    printf("[Raw Msgpack API] Initialization started.\n");
+#endif
+
+    plugin_params_t* params = (plugin_params_t *) plugin_params;
+    raw_msgpack_api_context_t* raw_ctx = malloc(sizeof(raw_msgpack_api_context_t));
+
+    prepare_socket_names(raw_ctx, output_plugin_name, host, port, socket_prefix);
 
     /* Initialize library */
     raw_ctx->ctx = flb_create();
@@ -226,7 +239,7 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
         return NULL;
     }
     flb_service_set(raw_ctx->ctx, "Flush", "0.1", NULL);
-    flb_service_set(raw_ctx->ctx, "Grace", "0.1", NULL);
+    flb_service_set(raw_ctx->ctx, "Grace", "1", NULL);
 
     // create a client socket here to be ready to ring to "doorbell"
     raw_ctx->doorbell_cli = ipc_unix_sock_cli_create(raw_ctx->client_addr);
@@ -235,9 +248,8 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 #endif
     in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
 
-    raw_ctx->api_buf_len = 8192 * 2;
-    raw_ctx->buffer = (char*) calloc(raw_ctx->api_buf_len, sizeof(char));
-    in_data->buffer_ptr  = raw_ctx->buffer;
+    // prepare_buffer(raw_ctx, 0);
+    // in_data->buffer_ptr  = raw_ctx->buffer;
     in_data->server_addr = raw_ctx->server_addr;
     raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
     if (!raw_ctx->i_ins) {
@@ -270,7 +282,6 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
             } else {
                 flb_input_set(raw_ctx->ctx, raw_ctx->in_ffd, "tag", params->params[i].val, NULL);
                 flb_output_set(raw_ctx->ctx, raw_ctx->out_ffd, "match", params->params[i].val, NULL);
-
             }
         }
     }
@@ -291,18 +302,17 @@ int add_data(void* api_ctx, void* data, int len) {
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
     if (len == 0)
         return 0;
+    // prepare_buffer(raw_ctx, len);
+
 #ifdef VERBOSE
     //printf("Append raw data of len %d\n", len);
-    if (len >= raw_ctx->api_buf_len) {
-        printf("[Raw Msgpack API] buffer overflow!\n\n");
-    }
     // DumpHex(data, len);
 #endif
-    memset(raw_ctx->buffer, 'a', raw_ctx->api_buf_len);
-    memcpy(raw_ctx->buffer, data, len);
-    // TBD(romanpr): check this:  i_ins->context->p = data;
+    // memset(raw_ctx->buffer, 'a', raw_ctx->api_buf_len);
+    // memcpy(raw_ctx->buffer, data, len);
+    // // TBD(romanpr): check this:  i_ins->context->p = data;
 
-    ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len);
+    ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len, (char*) data);
     memset(raw_ctx->buffer, 'b', raw_ctx->api_buf_len);
     return 0;
 }
@@ -329,50 +339,3 @@ int finalize(void* api_ctx) {
     flb_destroy(raw_ctx->ctx);
     return 0;
 }
-
-
-// msgpack_sbuffer generate_message_pack(n) {
-//     msgpack_sbuffer sbuf;
-//     msgpack_sbuffer_init(&sbuf);
-
-//     /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
-//     msgpack_packer pk;
-//     msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
-
-//     // pack array what will contain (n+2) values(ints/booleans/strings)
-//     msgpack_pack_array(&pk, n + 2);
-
-//     int i;
-//     for (i = 0; i < n; i++)
-//         msgpack_pack_int(&pk, i);
-
-//     // pack the boolean
-//     msgpack_pack_true(&pk);
-
-//     // pack string (size and body)
-//     msgpack_pack_str(&pk, 11);
-//     msgpack_pack_str_body(&pk, "test_plugin", 11);
-
-//     return sbuf;
-// }
-
-// void dump_packed_message(msgpack_sbuffer sbuf, FILE *out) {
-//     /* deserialize the buffer into msgpack_object instance. */
-//     /* deserialized object is valid during the msgpack_zone instance alive. */
-//     msgpack_zone mempool;
-//     msgpack_zone_init(&mempool, 2048);
-
-//     msgpack_object deserialized;
-//     msgpack_unpack(sbuf.data, sbuf.size, NULL, &mempool, &deserialized);
-
-//     /* print the deserialized object. */
-//     msgpack_object_print(out, deserialized);
-//     puts("");
-
-//     msgpack_zone_destroy(&mempool);
-// }
-
-// int main()
-// {
-//     return 0;
-// }
