@@ -74,6 +74,7 @@ static char *influxdb_format(const char *tag, int tag_len,
     char *str = NULL;
     size_t str_size;
     char tmp[128];
+    char tmp_debug[128];  // debug
     msgpack_unpacked result;
     msgpack_object root;
     msgpack_object map;
@@ -202,7 +203,13 @@ static char *influxdb_format(const char *tag, int tag_len,
             }
             else if (v->type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
                 val = tmp;
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64 "i", v->via.u64);
+                val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64, v->via.u64);
+
+                // We cannot parse uint64_t as int64_t because of the overflow
+
+                // This will not work with influx of versions less than 2.0.0
+                // influx requires 'influx_uint_support=true' to be able to parse uints
+                // val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64 "u", v->via.u64);
             }
             else if (v->type == MSGPACK_OBJECT_NEGATIVE_INTEGER) {
                 val = tmp;
@@ -284,8 +291,7 @@ static char *influxdb_format(const char *tag, int tag_len,
                 influxdb_bulk_append_bulk(bulk, bulk_body, ' ') != 0) {
                 goto error;
             }
-        }
-        else {
+        } else {
             flb_plg_warn(ctx->ins, "skip send record, "
                          "since no record available "
                          "or all fields are tagged in record");
@@ -296,7 +302,6 @@ static char *influxdb_format(const char *tag, int tag_len,
         bulk_head->len = 0;
         bulk_body->len = 0;
     }
-
     msgpack_unpacked_destroy(&result);
 
     *out_size = bulk->len;
