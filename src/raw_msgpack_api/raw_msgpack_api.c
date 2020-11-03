@@ -182,7 +182,7 @@ bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_l
                             0, (struct sockaddr *) &server_address,
                             address_length);
     (void) bytes_sent;
-    // printf("bytes_sent = %d \n", bytes_sent);
+    printf("bytes_sent = %d \n", bytes_sent);
 
     bytes_received = recvfrom(client_fd,
                               (char *) &ring_msg, msg_len,
@@ -313,7 +313,7 @@ int add_data(void* api_ctx, void* data, int len) {
     // // TBD(romanpr): check this:  i_ins->context->p = data;
 
     ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len, (char*) data);
-    memset(raw_ctx->buffer, 'b', raw_ctx->api_buf_len);
+    // memset(raw_ctx->buffer, 'b', raw_ctx->api_buf_len);
     return 0;
 }
 
@@ -334,8 +334,8 @@ int finalize(void* api_ctx) {
     // finilize fluent bit
     flb_stop(raw_ctx->ctx);
 
-    if (raw_ctx->buffer)
-        free(raw_ctx->buffer);
+    // if (raw_ctx->buffer)
+    //     free(raw_ctx->buffer);
     flb_destroy(raw_ctx->ctx);
     return 0;
 }
