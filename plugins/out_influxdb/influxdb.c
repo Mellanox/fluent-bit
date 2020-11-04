@@ -203,17 +203,18 @@ static char *influxdb_format(const char *tag, int tag_len,
             }
             else if (v->type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
                 val = tmp;
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64, v->via.u64);
-
-                // We cannot parse uint64_t as int64_t because of the overflow
-
-                // This will not work with influx of versions less than 2.0.0
-                // influx requires 'influx_uint_support=true' to be able to parse uints
-                // val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64 "u", v->via.u64);
+                if (!ctx->influx_uint_support) {
+                    val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64, v->via.u64);
+                } else {
+                    // We cannot parse uint64_t as int64_t because of the overflow
+                    // This will not work with influx of versions less than 2.0.0
+                    // influx requires 'influx_uint_support=true' to be able to parse uints
+                    val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64 "u", v->via.u64);
+                }
             }
             else if (v->type == MSGPACK_OBJECT_NEGATIVE_INTEGER) {
                 val = tmp;
-                // val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRId64 "i", v->via.i64);
+                // val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRId64, v->via.i64);  // this is a bug
                 val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRId64 "i", v->via.i64);
             }
             else if (v->type == MSGPACK_OBJECT_FLOAT || v->type == MSGPACK_OBJECT_FLOAT32) {
@@ -359,6 +360,13 @@ static int cb_influxdb_init(struct flb_output_instance *ins, struct flb_config *
         io_flags = FLB_IO_TCP;
     }
 
+    /* check if need enable influx_uint_support */
+    // this will work only with influx versions >= 2.0.0
+    ctx->influx_uint_support = 0;
+    tmp = flb_output_get_property("influx_uint_support", ins);
+    if (tmp) {
+        ctx->influx_uint_support = atoi(tmp);
+    }
     /* database */
     tmp = flb_output_get_property("database", ins);
     if (!tmp) {
