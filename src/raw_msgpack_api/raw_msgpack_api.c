@@ -267,7 +267,6 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 int add_data(void* api_ctx, void* data, int len) {
     if (api_ctx == NULL)
         return -1;
-    printf("[Raw Msgpack API] add_data \n");
 
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
     if (len == 0)
