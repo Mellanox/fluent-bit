@@ -126,10 +126,10 @@ void check_msgpack_keys_stdout(FILE* out, msgpack_object o, bool iskey) {
         if(o.via.array.size != 0) {
             msgpack_object* p = o.via.array.ptr;
             msgpack_object* const pend = o.via.array.ptr + o.via.array.size;
-            check_msgpack_keys(out, *p, false);
+            check_msgpack_keys_stdout(out, *p, false);
             ++p;
             for(; p < pend; ++p) {
-                check_msgpack_keys(out, *p, false);
+                check_msgpack_keys_stdout(out, *p, false);
             }
         }
         break;
@@ -137,12 +137,12 @@ void check_msgpack_keys_stdout(FILE* out, msgpack_object o, bool iskey) {
         if(o.via.map.size != 0) {
             msgpack_object_kv* p = o.via.map.ptr;
             msgpack_object_kv* const pend = o.via.map.ptr + o.via.map.size;
-            check_msgpack_keys(out, p->key, true);
-            check_msgpack_keys(out, p->val, false);
+            check_msgpack_keys_stdout(out, p->key, true);
+            check_msgpack_keys_stdout(out, p->val, false);
             ++p;
             for(; p < pend; ++p) {
-                check_msgpack_keys(out, p->key, true);
-                check_msgpack_keys(out, p->val, false);
+                check_msgpack_keys_stdout(out, p->key, true);
+                check_msgpack_keys_stdout(out, p->val, false);
             }
         }
         break;
@@ -194,8 +194,6 @@ static void cb_stdout_flush(const void *data, size_t bytes,
         memcpy(buf, tag, tag_len);
         buf[tag_len] = '\0';
         msgpack_unpacked_init(&result);
-        
-	// FILE* log_d = fopen("/tmp/recv_side_stdout.log", "a");
 
         while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
             printf("[%zd] %s: [", cnt++, buf);
@@ -203,16 +201,9 @@ static void cb_stdout_flush(const void *data, size_t bytes,
             printf("%"PRIu32".%09lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec);
             msgpack_object_print(stdout, *p);
             printf("]\n");
-	    
-            // check_msgpack_keys_stdout(log_d, result.data, false);
-            // fprintf(log_d, "[");
-            // fprintf(log_d, "%"PRIu32".%06lu, ", (uint32_t)tmp.tm.tv_sec, tmp.tm.tv_nsec / 1000);
-            // msgpack_object_print(log_d, *p);
-            // fprintf(log_d, "]\n");
         }
         msgpack_unpacked_destroy(&result);
         flb_free(buf);
-        // fclose(log_d);
     }
     fflush(stdout);
 
