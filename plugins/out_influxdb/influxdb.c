@@ -74,7 +74,6 @@ static char *influxdb_format(const char *tag, int tag_len,
     char *str = NULL;
     size_t str_size;
     char tmp[128];
-    char tmp_debug[128];  // debug
     msgpack_unpacked result;
     msgpack_object root;
     msgpack_object map;
@@ -203,23 +202,22 @@ static char *influxdb_format(const char *tag, int tag_len,
             }
             else if (v->type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
                 val = tmp;
-                if (!ctx->influx_uint_support) {
-                    val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64, v->via.u64);
-                } else {
+                if (ctx->influx_uint_support) {
                     // We cannot parse uint64_t as int64_t because of the overflow
                     // This will not work with influx of versions less than 2.0.0
                     // influx requires 'influx_uint_support=true' to be able to parse uints
-                    val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64 "u", v->via.u64);
+                    val_len = snprintf(tmp, sizeof(tmp), "%" PRIu64 "u", v->via.u64);
+                } else {
+                    val_len = snprintf(tmp, sizeof(tmp), "%" PRIu64, v->via.u64);
                 }
             }
             else if (v->type == MSGPACK_OBJECT_NEGATIVE_INTEGER) {
                 val = tmp;
-                // val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRId64, v->via.i64);  // this is a bug
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRId64 "i", v->via.i64);
+                val_len = snprintf(tmp, sizeof(tmp), "%" PRId64 "i", v->via.i64);
             }
             else if (v->type == MSGPACK_OBJECT_FLOAT || v->type == MSGPACK_OBJECT_FLOAT32) {
                 val = tmp;
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%f", v->via.f64);
+                val_len = snprintf(tmp, sizeof(tmp), "%f", v->via.f64);
             }
             else if (v->type == MSGPACK_OBJECT_STR) {
                 /* String value */
@@ -337,6 +335,8 @@ error:
 static int cb_influxdb_init(struct flb_output_instance *ins, struct flb_config *config,
                             void *data)
 {
+
+    printf("[Fluent Bit] [influx] cb_influxdb_init\n\n");
     int io_flags = 0;
     const char *tmp;
     struct flb_upstream *upstream;
@@ -456,6 +456,8 @@ static void cb_influxdb_flush(const void *data, size_t bytes,
                               void *out_context,
                               struct flb_config *config)
 {
+    printf("[Fluent Bit] [influx] cb_influxdb_flush\n\n");
+
     int ret;
     int bytes_out;
     size_t b_sent;
