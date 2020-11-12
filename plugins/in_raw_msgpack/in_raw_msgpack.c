@@ -113,7 +113,6 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
         return -1;
     }
 
-    // flb_input_chunk_append_raw(ins, NULL, 0, ctx->ptr, ctx->msg.data_len);
     flb_input_chunk_append_raw(ins, NULL, 0, ctx->msg.data_buf, ctx->msg.data_len);
 
     int bytes_sent = sendto(ctx->sock_fd,

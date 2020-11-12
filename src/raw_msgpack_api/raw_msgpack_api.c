@@ -58,14 +58,12 @@ typedef struct raw_msgpack_api_context_t {
     char server_addr[256];
 
     flb_ctx_t *ctx;
-    struct flb_input_instance *i_ins;
+    // struct flb_input_instance *i_ins;
 
     int in_ffd;
     int out_ffd;
 
     int doorbell_cli;
-    // char *buffer;
-    // int api_buf_len;
 } raw_msgpack_api_context_t;
 
 
@@ -133,32 +131,6 @@ int ipc_unix_sock_cli_create(char *sock_path) {
     }
     return socket_fd;
 }
-
-
-// reallocation does not work
-// bool prepare_buffer(raw_msgpack_api_context_t* raw_ctx, size_t new_size) {
-//     if (!raw_ctx->buffer) {
-//         raw_ctx->api_buf_len = 2048 * 16;
-//         raw_ctx->buffer = (char*) calloc(raw_ctx->api_buf_len, sizeof(char));
-//     }
-
-//     if (new_size > raw_ctx->api_buf_len) {
-//         // realloc data if buffer size is not sufficient
-//         while (new_size > raw_ctx->api_buf_len) {
-//             raw_ctx->api_buf_len *= 2;
-//         }
-//         printf("[Raw Msgpack API] buffer size was increased to %d to fit data of size %zu.\n",
-//                                                                 raw_ctx->api_buf_len, new_size);
-//         char* tmp = (void*) realloc(raw_ctx->buffer, sizeof(char) * raw_ctx->api_buf_len);
-//         if (tmp) {
-//             raw_ctx->buffer = tmp;
-//             return true;
-//         }
-//         printf("[Raw Msgpack API] [error] cannot realloc buffer");
-//         return false;
-//     }
-//     return true;
-// }
 
 
 bool ring_doorbell(raw_msgpack_api_context_t* raw_ctx, int client_fd, int data_len, char* data_buf) {
@@ -248,15 +220,12 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 #endif
     in_plugin_data_t *in_data = (in_plugin_data_t *) calloc(1, sizeof(in_plugin_data_t));
 
-    // prepare_buffer(raw_ctx, 0);
-    // in_data->buffer_ptr  = raw_ctx->buffer;
     in_data->server_addr = raw_ctx->server_addr;
-    raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
-    if (!raw_ctx->i_ins) {
-        return NULL;
-    }
-
-    // TBD(romanpr): docs.fluentbit.io/manual/administration/buffering-and-storage
+    // raw_ctx->i_ins = flb_input_new(raw_ctx->ctx->config, "raw_msgpack", (void *) in_data, FLB_TRUE);
+    // if (!raw_ctx->i_ins) {
+    //     return NULL;
+    // }
+    raw_ctx->in_ffd = flb_input(raw_ctx->ctx, "raw_msgpack", (void *) in_data);
 
     raw_ctx->out_ffd = -1;
     if (strlen(output_plugin_name) > 0) {  // simple check for plugin name
@@ -298,22 +267,16 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 int add_data(void* api_ctx, void* data, int len) {
     if (api_ctx == NULL)
         return -1;
+    printf("[Raw Msgpack API] add_data \n");
 
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
     if (len == 0)
         return 0;
-    // prepare_buffer(raw_ctx, len);
-
 #ifdef VERBOSE
     //printf("Append raw data of len %d\n", len);
     // DumpHex(data, len);
 #endif
-    // memset(raw_ctx->buffer, 'a', raw_ctx->api_buf_len);
-    // memcpy(raw_ctx->buffer, data, len);
-    // // TBD(romanpr): check this:  i_ins->context->p = data;
-
     ring_doorbell(raw_ctx, raw_ctx->doorbell_cli, len, (char*) data);
-    // memset(raw_ctx->buffer, 'b', raw_ctx->api_buf_len);
     return 0;
 }
 
@@ -333,9 +296,6 @@ int finalize(void* api_ctx) {
     unlink(raw_ctx->client_addr);
     // finilize fluent bit
     flb_stop(raw_ctx->ctx);
-
-    // if (raw_ctx->buffer)
-    //     free(raw_ctx->buffer);
     flb_destroy(raw_ctx->ctx);
     return 0;
 }
