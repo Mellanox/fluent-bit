@@ -32,6 +32,188 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 
+
+
+bool is_name_corrupted(const char * name, size_t name_len) {
+    int i;
+    for (i = 0; i < name_len; i++) {
+        char c = name[i];
+        if (!(isalpha(c) || isdigit(c) || c == '_' || c == '.')){
+            return true;
+        }
+    }
+    return false;
+}
+
+
+void check_msgpack_keys_stdout_raw(FILE* out, msgpack_object o, bool iskey, int* num_fields, const char* tag_key, char** tag_val) {
+    switch(o.type) {
+    case MSGPACK_OBJECT_STR:
+        if (!iskey) {
+            break;
+        }
+        bool corrupted = is_name_corrupted(o.via.str.ptr, o.via.str.size);
+        *num_fields += 1;
+
+        if (corrupted) {
+            fprintf(out, "key=\"");
+            fwrite(o.via.str.ptr, o.via.str.size, 1, out);
+            fprintf(out, "\"");
+            fprintf(out, " -> CORRUPTED\n");
+        }
+        break;
+    case MSGPACK_OBJECT_ARRAY:
+        if(o.via.array.size != 0) {
+            msgpack_object* p = o.via.array.ptr;
+            msgpack_object* const pend = o.via.array.ptr + o.via.array.size;
+            check_msgpack_keys_stdout_raw(out, *p, false, num_fields, tag_key, tag_val);
+            ++p;
+            for(; p < pend; ++p) {
+                check_msgpack_keys_stdout_raw(out, *p, false, num_fields, tag_key, tag_val);
+            }
+        }
+        break;
+    case MSGPACK_OBJECT_MAP:
+        if(o.via.map.size != 0) {
+            msgpack_object_kv* p = o.via.map.ptr;
+            msgpack_object_kv* const pend = o.via.map.ptr + o.via.map.size;
+
+            // if (strncmp(tag_key, p->key.via.str.ptr, p->key.via.str.size) == 0) {
+            //     strncpy(*tag_val, p->val.via.str.ptr, p->val.via.str.size);
+            //     *tag_val[p->val.via.str.size] = '\0';
+            // }
+            check_msgpack_keys_stdout_raw(out, p->key, true, num_fields, tag_key, tag_val);
+            check_msgpack_keys_stdout_raw(out, p->val, false, num_fields, tag_key, tag_val);
+            ++p;
+            for(; p < pend; ++p) {
+                if (strncmp(tag_key, p->key.via.str.ptr, strlen(tag_key)) == 0) {
+                    char tmp[128];
+                    strncpy(tmp, p->val.via.str.ptr, p->val.via.str.size);
+                    tmp[p->val.via.str.size] = '\0';
+                    *tag_val = strdup(tmp);
+
+                }
+                check_msgpack_keys_stdout_raw(out, p->key, true, num_fields, tag_key, tag_val);
+                check_msgpack_keys_stdout_raw(out, p->val, false, num_fields, tag_key, tag_val);
+            }
+        }
+        break;
+    default:{
+    };
+    }
+}
+
+
+record_counters_t* create_record_counters() {
+    printf("[create_record_counters]\n");
+    record_counters_t* rc = calloc(1, sizeof(record_counters_t));
+    rc->num_types = 0;
+    rc->type_name = (type_name_t *) calloc(1, sizeof(type_name_t));
+    rc->num_records = (int *) calloc(1, sizeof(int));
+    rc->num_records[0] = 0;
+    rc->num_fields_per_record = (int **) calloc(1, sizeof(int*));
+    rc->num_fields_per_record[0] = (int*) calloc(1, sizeof(int));
+    return rc;
+}
+
+
+void destroy_record_counters(record_counters_t* rc) {
+    int i;
+    if (rc->type_name) {
+        free(rc->type_name);
+    }
+    if (rc->num_fields_per_record) {
+        for (i = 0; i < rc->num_types; i++) {
+            if (rc->num_fields_per_record[i]) {
+                free(rc->num_fields_per_record[i]);
+            }
+        }
+        free(rc->num_fields_per_record);
+    }
+    if (rc->num_records) {
+        free(rc->num_records);
+    }
+}
+
+
+void update_record_counters(record_counters_t* rc, msgpack_object o) {
+    int num_record_fields = 0;
+    char *type_name = NULL;
+    check_msgpack_keys_stdout_raw(stdout, o, false, &num_record_fields, "type_name", &type_name);
+    if (!type_name) {
+        type_name = strdup("counters");
+        type_name[8] = '\0';
+    }
+
+    int i = 0;
+    void* tmp;
+    for (i = 0; i < rc->num_types; i++) {
+        if (strcmp(type_name, rc->type_name[i]) == 0) {
+            break;
+        }
+    }
+
+    if (i == rc->num_types) {
+        // new type name;
+        sprintf(rc->type_name[rc->num_types], "%s", type_name);
+        rc->num_types += 1;
+
+        tmp = realloc(rc->type_name, (rc->num_types+1) * (sizeof(type_name_t)));
+        if (tmp) {
+            rc->type_name = (type_name_t *) tmp;
+        }
+
+        tmp = realloc(rc->num_records, rc->num_types * (sizeof(char*)));
+        if (tmp) {
+            rc->num_records = (int*) tmp;
+            rc->num_records[rc->num_types-1] = 1;
+        }
+
+        int cur_num_rec = rc->num_records[i];
+        rc->num_fields_per_record[i][cur_num_rec - 1] = num_record_fields;
+        tmp = realloc(rc->num_fields_per_record[i], (cur_num_rec+1) * (sizeof(int*)));
+        if (tmp) {
+            rc->num_fields_per_record[i] = (int*) tmp;
+        }
+
+        tmp = realloc(rc->num_fields_per_record, (rc->num_types + 1) * (sizeof(int*)));
+        if (tmp) {
+            rc->num_fields_per_record = (int**) tmp;
+            rc->num_fields_per_record[rc->num_types] = (int*) calloc(1, sizeof(int));
+        }
+    } else {
+        int cur_num_rec = rc->num_records[i];
+        rc->num_fields_per_record[i][cur_num_rec] = num_record_fields;
+        tmp = realloc(rc->num_fields_per_record[i], (cur_num_rec + 1) * (sizeof(int*)));
+        if (tmp) {
+            rc->num_fields_per_record[i] = (int*) tmp;
+        }
+
+        rc->num_records[i]++;
+    }
+
+    if (type_name) {
+        free(type_name);
+    }
+}
+
+void print_record_counters(FILE* fd, record_counters_t* rc) {
+    int total_records = 0;
+    printf("\n[print_record_counters]\n");
+    int i, j;
+    for (i = 0; i < rc->num_types; i++ ) {
+        total_records += rc->num_records[i];
+        fprintf(fd, "[%s] %d\n", rc->type_name[i], rc->num_records[i]);
+        fprintf(fd, "fields:");
+        for (j = 0; j < rc->num_records[i]; j++) {
+            fprintf(fd, " %d", rc->num_fields_per_record[i][j]);
+        }
+        fprintf(fd, "\n");
+    }
+    fprintf(fd, "[total] %d\n\n", total_records);
+}
+
+
 static int cb_stdout_raw_init(struct flb_output_instance *ins,
                               struct flb_config *config, void *data)
 {
@@ -55,6 +237,8 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
         return -1;
     }
 
+    ctx->total_num_received_records = 0;
+
     ctx->bytes_milestone = 1024*1024; // default is 1 MB
     tmp = flb_output_get_property("measure_speed_MB_milestone", ins);
     if (tmp) {
@@ -70,7 +254,7 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
             ctx->ts_end         = 0;
             ctx->bytes_received = 0;
 
-            printf("[STDOUT_RAW] Speed measurements will be printed each %d bytes (%d MB).\n",
+            printf("[STDOUT_RAW] Speed measurements will be printed each %"PRIu64" bytes (%"PRIu64" MB).\n",
                                     ctx->bytes_milestone, ctx->bytes_milestone/1024/1024);
         }
     }
@@ -78,17 +262,31 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
 
 
     ctx->use_bin_file_check = 0;
-    tmp = flb_output_get_property("check_file_path", ins);
+    tmp = flb_output_get_property("check_dir", ins);
     if (tmp) {
         ctx->use_bin_file_check = 1;
-        ctx->check_file_path = strdup(tmp);
-    }
+        ctx->check_dir = strdup(tmp);
 
+        ctx->check_file_path[0] = '\0';
+        sprintf(ctx->check_file_path, "%s/clx_test_recv_data.bin", ctx->check_dir);
+        ctx->fieds_counter_log_path[0] = '\0';
+        sprintf(ctx->fieds_counter_log_path, "%s/clx_export_recv_records.bin", ctx->check_dir);
+    }
     if (ctx->use_bin_file_check) {
-        FILE *fp = fopen(ctx->check_file_path, "wb");
+        ctx->log_fields_count_fd = fopen(ctx->fieds_counter_log_path, "ab");
+        if (ctx->log_fields_count_fd == NULL) {
+            printf("Cannot opend %s. Disabling logs.\n", ctx->fieds_counter_log_path);
+            ctx->use_bin_file_check = 0;
+        } else {
+            fprintf(ctx->log_fields_count_fd, "Records:\n");
+            ctx->record_counters = create_record_counters();
+        }
+    }
+    if (ctx->use_bin_file_check) {
+        FILE *fp = fopen(ctx->check_file_path, "ab");
         if (fp == NULL) {
-            printf("cant open file for check binary output error\n");
-            ctx->check_in_raw_msgpack_fd = NULL;
+            printf("Cannot opend %s. Disabling logs.\n", ctx->check_file_path);
+            ctx->use_bin_file_check = 0;
         } else {
             ctx->check_in_raw_msgpack_fd = fileno(fp);
         }
@@ -223,67 +421,6 @@ static void measure_recv_speed(const void *data, size_t bytes, struct flb_stdout
 }
 
 
-bool is_name_corrupted(const char * name, size_t name_len) {
-    int i;
-    for (i = 0; i < name_len; i++) {
-        char c = name[i];
-        if (!(isalpha(c) || isdigit(c) || c == '_' || c == '.')){
-            return true;
-        }
-    }
-    return false;
-}
-
-
-void check_msgpack_keys(FILE* out, msgpack_object o, bool iskey) {
-    switch(o.type) {
-    case MSGPACK_OBJECT_STR:
-        if (!iskey) {
-            break;
-        }
-        bool corrupted = is_name_corrupted(o.via.str.ptr, o.via.str.size);
-
-        if (corrupted) {
-            fprintf(out, "key=\"");
-            fwrite(o.via.str.ptr, o.via.str.size, 1, out);
-            fprintf(out, "\"");
-            fprintf(out, " -> CORRUPTED\n");
-            sleep(30);
-        }
-        break;
-    case MSGPACK_OBJECT_ARRAY:
-        if(o.via.array.size != 0) {
-            msgpack_object* p = o.via.array.ptr;
-            msgpack_object* const pend = o.via.array.ptr + o.via.array.size;
-            check_msgpack_keys(out, *p, false);
-            ++p;
-            for(; p < pend; ++p) {
-                check_msgpack_keys(out, *p, false);
-            }
-        }
-        break;
-    case MSGPACK_OBJECT_MAP:
-        if(o.via.map.size != 0) {
-            msgpack_object_kv* p = o.via.map.ptr;
-            msgpack_object_kv* const pend = o.via.map.ptr + o.via.map.size;
-            check_msgpack_keys(out, p->key, true);
-            check_msgpack_keys(out, p->val, false);
-            ++p;
-            for(; p < pend; ++p) {
-                check_msgpack_keys(out, p->key, true);
-                check_msgpack_keys(out, p->val, false);
-            }
-        }
-        break;
-    default:{
-    };
-    }
-}
-
-
-
-
-
 static void cb_stdout_raw_flush(const void *data, size_t bytes,
                             const char *tag, int tag_len,
                             struct flb_input_instance *i_ins,
@@ -322,6 +459,7 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
             }
             fflush(stdout);
         } else {
+
             /* A tag might not contain a NULL byte */
             buf = flb_malloc(tag_len + 1);
             if (!buf) {
@@ -332,30 +470,20 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
             buf[tag_len] = '\0';
             msgpack_unpacked_init(&result);
 
-        // FILE* log_d = fopen("/tmp/recv_side_stdout_raw.log", "a");
-
             while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
-                // gettimeofday(&tv, NULL);
-                // time_in_micros = 1000000 * tv.tv_sec + tv.tv_usec;
-                // printf("[stdout_raw] inside of unpack loop: ts %lu\n", time_in_micros);
-
+                printf("[%zd] %s: ", cnt++, buf);
                 msgpack_object_print(stdout, result.data);
                 printf("\n\n");
                 fflush(stdout);
 
-                // print corrupted keys (names)
-                // check_msgpack_keys(stdout, result.data, false);
-                // print data to log
-                // pid_t tid = syscall(SYS_gettid);
-                // fprintf(log_d,"tid = %d\n", tid);
-
-                // msgpack_object_print(log_d, result.data);
-                // fprintf(log_d, "\n");
-                // fflush(stdout);
+                if (ctx->use_bin_file_check) {
+                    ctx->total_num_received_records++;
+                    update_record_counters(ctx->record_counters, result.data);
+                }
             }
+
             msgpack_unpacked_destroy(&result);
             flb_free(buf);
-            // fclose(log_d);
         }
 
         fflush(stdout);
@@ -377,24 +505,32 @@ static int cb_stdout_raw_exit(void *data, struct flb_config *config)
     if (!ctx) {
         return 0;
     }
-    flb_free(ctx);
-    return 0;
     if (ctx->use_bin_file_check) {
-        if (ctx->check_file_path) {
-            free(ctx->check_file_path);
+
+        if (ctx->check_dir) {
+            free(ctx->check_dir);
         }
         if (ctx->check_in_raw_msgpack_fd) {
             close(ctx->check_in_raw_msgpack_fd);
         }
+        if (ctx->log_fields_count_fd) {
+            print_record_counters(ctx->log_fields_count_fd, ctx->record_counters);
+            fclose(ctx->log_fields_count_fd);
+        }
+        if (ctx->record_counters) {
+            destroy_record_counters(ctx->record_counters);
+        }
     }
+    flb_free(ctx);
+    return 0;
 }
 
 /* Configuration properties map */
 static struct flb_config_map config_map[] = {
     {
-     FLB_CONFIG_MAP_STR, "check_file_path", NULL,
+     FLB_CONFIG_MAP_STR, "check_dir", NULL,
      0, FLB_FALSE, 0,
-     "Specifies the binary file path to check end-to-end data transfer."
+     "Specifies the output dir to check end-to-end data transfer."
     },
     {
      FLB_CONFIG_MAP_BOOL, "measure_speed", false,

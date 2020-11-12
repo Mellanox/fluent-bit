@@ -25,11 +25,31 @@
 #include <fluent-bit/flb_output_plugin.h>
 #include <fluent-bit/flb_sds.h>
 
+typedef char type_name_t[128];
+
+typedef struct record_counters_t{
+    int           num_types;
+    type_name_t*  type_name;
+    int*          num_records;
+    int**         num_fields_per_record;
+} record_counters_t;
+
+struct record_counters_t* create_record_counters();
+void destroy_record_counters(record_counters_t* rc);
+void update_record_counters(record_counters_t* rc, msgpack_object o);
+void print_record_counters(FILE* fd, record_counters_t* rc);
+
 struct flb_stdout_raw {
     // to check in_raw_msgpack
     bool     use_bin_file_check;
-    char*    check_file_path;
+    char*    check_dir;
+    char     check_file_path[128];
     int      check_in_raw_msgpack_fd;
+    char     fieds_counter_log_path[128];
+    FILE*      log_fields_count_fd;
+    unsigned total_num_received_records;
+
+    struct record_counters_t * record_counters;
 
     // to measure time
     bool     measure_speed;
