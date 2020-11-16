@@ -336,7 +336,6 @@ static int cb_influxdb_init(struct flb_output_instance *ins, struct flb_config *
                             void *data)
 {
 
-    printf("[Fluent Bit] [influx] cb_influxdb_init\n\n");
     int io_flags = 0;
     const char *tmp;
     struct flb_upstream *upstream;
@@ -456,8 +455,6 @@ static void cb_influxdb_flush(const void *data, size_t bytes,
                               void *out_context,
                               struct flb_config *config)
 {
-    printf("[Fluent Bit] [influx] cb_influxdb_flush\n\n");
-
     int ret;
     int bytes_out;
     size_t b_sent;
