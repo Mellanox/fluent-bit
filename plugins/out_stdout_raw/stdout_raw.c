@@ -336,6 +336,7 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
     return 0;
 }
 
+#ifdef __x86_64__
 static uint64_t clx_parse_cpuinfo(void) {
     float f = 1.0;
     char buf[256];
@@ -419,6 +420,7 @@ static void measure_recv_speed(const void *data, size_t bytes, struct flb_stdout
         ctx->ts_begin = ctx->ts_end;
     }
 }
+#endif  // __x86_64__
 
 
 static void cb_stdout_raw_flush(const void *data, size_t bytes,
@@ -436,7 +438,9 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
     (void) config;
 
     if (ctx->measure_speed) {
+#ifdef __x86_64__
         measure_recv_speed(data, bytes, ctx);
+#endif
     } else {
         // struct flb_time tmp;
         // msgpack_object *p;
