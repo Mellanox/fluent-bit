@@ -31,7 +31,7 @@
 #include "stdio.h"
 #include <sys/types.h>
 #include <sys/syscall.h>
-
+#include <ctype.h>
 
 
 bool is_name_corrupted(const char * name, size_t name_len) {
