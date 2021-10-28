@@ -154,3 +154,4 @@ DEFINE_OPTION(FLB_OUT_UDP                     "Enable UDP output plugin"        
 DEFINE_OPTION(FLB_OUT_VIVO_EXPORTER           "Enable Vivo exporter output plugin"           ON)
 DEFINE_OPTION(FLB_OUT_WEBSOCKET               "Enable Websocket output plugin"               ON)
 DEFINE_OPTION(FLB_OUT_STDOUT_RAW              "Enable STDOUT RAW output plugin"              ON)
+DEFINE_OPTION(FLB_OUT_COLLECTX                "Enable Collectx output plugin"                ON)
