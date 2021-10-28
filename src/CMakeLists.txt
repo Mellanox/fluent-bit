@@ -430,4 +430,5 @@ endif()
 
 if(FLB_RAW_MSGPACK_API)
   add_subdirectory(raw_msgpack_api)
+  # add_subdirectory(raw_opaque_api)
 endif()
