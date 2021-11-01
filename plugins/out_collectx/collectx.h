@@ -25,12 +25,13 @@
 #include <fluent-bit/flb_output_plugin.h>
 #include <fluent-bit/flb_sds.h>
 
-typedef int (*clx_callback_t)(const void *, size_t);
+typedef int (*clx_callback_t)(const void *, const void *, size_t);
 
 struct flb_collectx {
     void           *clx_provider_handle;
     clx_callback_t cb_write_events_to_clx;
 
+    void           *collectx_provider_ctx;
     struct flb_output_instance *ins;  // pointer to the plugin info
                                       // ins->data can be used for user parameters
 };

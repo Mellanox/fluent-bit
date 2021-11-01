@@ -53,16 +53,15 @@ static int cb_collectx_init(struct flb_output_instance *ins,
 {
     int ret;
     struct flb_collectx *ctx = NULL;
-    (void) ins;
     (void) config;
-    (void) data;
 
     ctx = flb_calloc(1, sizeof(struct flb_collectx));
     if (!ctx) {
         flb_errno();
         return -1;
     }
-    ctx->ins = ins;
+    ctx->ins                   = ins;
+    ctx->collectx_provider_ctx = data;
 
     ret = flb_output_config_map_set(ins, (void *) ctx);
     if (ret == -1) {
@@ -84,10 +83,10 @@ static int cb_collectx_init(struct flb_output_instance *ins,
 
 
 static void cb_collectx_flush(const void *data, size_t bytes,
-                            const char *tag, int tag_len,
-                            struct flb_input_instance *i_ins,
-                            void *out_context,
-                            struct flb_config *config)
+                             const char *tag, int tag_len,
+                             struct flb_input_instance *i_ins,
+                             void *out_context,
+                             struct flb_config *config)
 {
     struct flb_collectx *ctx = out_context;
     char *buf = NULL;
@@ -103,7 +102,7 @@ static void cb_collectx_flush(const void *data, size_t bytes,
     memcpy(buf, tag, tag_len);
     buf[tag_len] = '\0';
 
-    int status = ctx->cb_write_events_to_clx(data, bytes);
+    int status = ctx->cb_write_events_to_clx(ctx->collectx_provider_ctx, data, bytes);
     if (status != 0) {
         flb_errno();
         flb_plg_error(ctx->ins, "write_events_to_clx failed with status %d!", status);
