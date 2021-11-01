@@ -28,7 +28,7 @@
 
 #include "collectx.h"
 
-#define SO_NAME "/opt/mellanox/collectx/lib/providers/libevent_fluent_aggreagator.so"
+#define SO_NAME "/opt/mellanox/collectx/lib/providers/libevents_fluent_aggr_provider.so"
 
 int load_clx_callback(struct flb_collectx *ctx, const char* so_lib_name)
 {
@@ -43,7 +43,14 @@ int load_clx_callback(struct flb_collectx *ctx, const char* so_lib_name)
         return -1;
     }
 
-    ctx->cb_write_events_to_clx = (clx_callback_t)dlsym(ctx->clx_provider_handle, "cb_wtite_events_to_clx");
+    char* error;
+    char* cb_name = "cb_write_events_to_clx";
+    dlerror();
+    ctx->cb_write_events_to_clx = (clx_callback_t)dlsym(ctx->clx_provider_handle, cb_name);
+    if ((error = dlerror()) != NULL)  {
+        flb_plg_error(ctx->ins, "dlsym failed for '%s' function of '%s' with error: %s", cb_name, so_lib_name, error);
+        return -1;
+    }
     return 0;
 }
 
