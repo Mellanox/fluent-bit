@@ -36,7 +36,13 @@ typedef struct collectx_plugin_api_ctx_t {
 } collectx_plugin_api_ctx_t;
 
 
-void* initialize(void *provider, uint16_t port) {
+typedef struct collectx_plugin_input_data {
+    char* collector_sock_name;
+    int   fluent_aggr_sock_fd;
+} collectx_plugin_input_data_t;
+
+
+void* initialize(uint16_t port, int fluent_aggr_sock_fd, const char* collector_sock_name) {
     collectx_plugin_api_ctx_t* api_ctx = (collectx_plugin_api_ctx_t*) calloc(1, sizeof(collectx_plugin_api_ctx_t));
 
     /* Initialize library */
@@ -57,11 +63,11 @@ void* initialize(void *provider, uint16_t port) {
     char port_str[6];
     sprintf(port_str, "%d", port);
     port_str[5] = '\0';
-    // flb_input_set(api_ctx->flb_ctx, api_ctx->in_ffd, "Host", host, NULL);   // TBD: check if need to set hosts
     flb_input_set(api_ctx->flb_ctx, api_ctx->in_ffd, "Port", port_str, NULL);
 
+    collectx_plugin_input_data_t input_data = {(char*)collector_sock_name, fluent_aggr_sock_fd};
     api_ctx->out_ffd = -1;
-    api_ctx->out_ffd = flb_output(api_ctx->flb_ctx, "collectx", (void*) provider);
+    api_ctx->out_ffd = flb_output(api_ctx->flb_ctx, "collectx", (void*) &input_data);
 
     if (api_ctx->out_ffd == -1) {
         printf("[FLuentBit Collectx plugin API] cannot create output 'collectx' plugin.\n"); fflush(stdout);

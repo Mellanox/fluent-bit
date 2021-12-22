@@ -25,39 +25,22 @@
 #include <fluent-bit/flb_pack.h>
 #include <fluent-bit/flb_config_map.h>
 #include <msgpack.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include "collectx.h"
 
 #define SO_NAME "/opt/mellanox/collectx/lib/providers/libevents_fluent_aggr_provider.so"
 
-int load_clx_callback(struct flb_collectx *ctx, const char* so_lib_name)
-{
-    if (so_lib_name == NULL || strlen(so_lib_name) == 0) {
-        flb_plg_error(ctx->ins, "so_lib_name is empty!");
-        return -1;
-    }
 
-    ctx->clx_provider_handle = dlopen(so_lib_name, RTLD_NOW);
-	if (ctx->clx_provider_handle == NULL) {
-        flb_plg_error(ctx->ins, "cannot load shared obj from '%s'. Error: '%s'", so_lib_name, dlerror());
-        return -1;
-    }
-
-    char* error;
-    char* cb_name = "cb_write_events_to_clx";
-    dlerror();
-    ctx->cb_write_events_to_clx = (clx_callback_t)dlsym(ctx->clx_provider_handle, cb_name);
-    if ((error = dlerror()) != NULL)  {
-        flb_plg_error(ctx->ins, "dlsym failed for '%s' function of '%s' with error: %s", cb_name, so_lib_name, error);
-        return -1;
-    }
-    return 0;
-}
+typedef struct collectx_plugin_input_data {
+    char* collector_sock_name;
+    int   fluent_aggr_sock_fd;
+} collectx_plugin_input_data_t;
 
 
 static int cb_collectx_init(struct flb_output_instance *ins,
-                            struct flb_config *config, void *data)
-{
+                            struct flb_config *config, void *data) {
     int ret;
     struct flb_collectx *ctx = NULL;
     (void) config;
@@ -67,8 +50,8 @@ static int cb_collectx_init(struct flb_output_instance *ins,
         flb_errno();
         return -1;
     }
-    ctx->ins                   = ins;
-    ctx->collectx_provider_ctx = data;
+    ctx->ins = ins;
+    flb_output_set_context(ins, ctx);
 
     ret = flb_output_config_map_set(ins, (void *) ctx);
     if (ret == -1) {
@@ -76,15 +59,27 @@ static int cb_collectx_init(struct flb_output_instance *ins,
         return -1;
     }
 
-    ret = load_clx_callback(ctx, (char*) SO_NAME);
-    if (ret == -1) {
-        flb_free(ctx);
+    collectx_plugin_input_data_t* input_data = (collectx_plugin_input_data_t*)data;
+    ctx->fluent_aggr_sock_fd = input_data->fluent_aggr_sock_fd;
+
+    if (input_data->fluent_aggr_sock_fd < 0) {
+        flb_plg_info(ctx->ins, "Failed to initialize because : ctx->fluent_aggr_sock_fd = %d", ctx->fluent_aggr_sock_fd);
         return -1;
     }
 
-    /* Export context */
-    flb_output_set_context(ins, ctx);
+    size_t name_len = strlen(input_data->collector_sock_name);
+    ctx->collector_sock_name = NULL;
+    ctx->collector_sock_name = flb_malloc(name_len + 1);
+    if (!ctx->collector_sock_name) {
+        flb_errno();
+        flb_free(ctx);
+        return -1;
+    }
+    strcpy(ctx->collector_sock_name, input_data->collector_sock_name);
+    ctx->collector_sock_name[name_len] = '\0';
 
+    /* Export context */
+    flb_plg_info(ctx->ins, "ctx->fluent_aggr_sock_fd = %d", ctx->fluent_aggr_sock_fd);
     return 0;
 }
 
@@ -96,27 +91,66 @@ static void cb_collectx_flush(const void *data, size_t bytes,
                              struct flb_config *config)
 {
     struct flb_collectx *ctx = out_context;
-    char *buf = NULL;
+    char *tag_string = NULL;
     (void) i_ins;
     (void) config;
 
+    flb_plg_info(ctx->ins, "[cb_collectx_flush] entered");
+
     /* A tag might not contain a NULL byte */
-    buf = flb_malloc(tag_len + 1);
-    if (!buf) {
+    tag_string = flb_malloc(tag_len + 1);
+    if (!tag_string) {
         flb_errno();
         FLB_OUTPUT_RETURN(FLB_RETRY);
     }
-    memcpy(buf, tag, tag_len);
-    buf[tag_len] = '\0';
+    memcpy(tag_string, tag, tag_len);
+    tag_string[tag_len] = '\0';
 
-    int status = ctx->cb_write_events_to_clx(ctx->collectx_provider_ctx, data, bytes);
-    if (status != 0) {
-        flb_errno();
-        flb_plg_error(ctx->ins, "write_events_to_clx failed with status %d!", status);
-        FLB_OUTPUT_RETURN(FLB_ERROR);
+    ipc_msg_t msg;
+    int msg_len = sizeof(ipc_msg_t);
+    memset(&msg, 0, sizeof(ipc_msg_t));
+
+    // 1. SEND DATA
+    msg.buffer_addr = (void*)data;
+    msg.data_size   = bytes;
+    msg.tag         = tag_string;
+
+    // flb_plg_info(ctx->ins, "[cb_collectx_flush] send data of size %zu, with tag '%s'", bytes, tag_string);
+
+    struct sockaddr_un collector_sock_address;
+    memset(&collector_sock_address, 0, sizeof(struct sockaddr_un));
+    collector_sock_address.sun_family = AF_UNIX;
+    snprintf(collector_sock_address.sun_path, sizeof(collector_sock_address.sun_path),"%s", ctx->collector_sock_name);
+
+    socklen_t address_length = sizeof(struct sockaddr_un);
+    int bytes_sent = sendto(ctx->fluent_aggr_sock_fd, (char*) &msg, msg_len, 0,
+                            (struct sockaddr*) &collector_sock_address, address_length);
+
+    if (bytes_sent == -1) {
+        flb_plg_info(ctx->ins, "[cb_collectx_flush] sendto() failed:  %s", strerror(errno));
+        FLB_OUTPUT_RETURN(FLB_RETRY);
+    }
+    if (bytes_sent != msg_len) {
+        flb_plg_info(ctx->ins, "[cb_collectx_flush] sendto() sent %d instead of %d bytes", bytes_sent, msg_len);
+        FLB_OUTPUT_RETURN(FLB_RETRY);
     }
 
-    free(buf);
+    // RECEIVE MSG TO FINISH with buffer
+    socklen_t bytes_in = recvfrom(ctx->fluent_aggr_sock_fd, (char*) &msg, msg_len, 0,
+                                  (struct sockaddr*) &collector_sock_address, (socklen_t*) &address_length);
+
+    if (bytes_in != msg_len) {
+        flb_plg_info(ctx->ins, "[cb_collectx_flush] received %d, expected %d bytes", bytes_in, msg_len);
+        return FLB_OUTPUT_RETURN(FLB_RETRY);
+    }
+    if (bytes_in < 0) {
+        flb_plg_info(ctx->ins, "[cb_collectx_flush] recvfrom() failed: %s", strerror(errno));
+        return FLB_OUTPUT_RETURN(FLB_RETRY);
+    }
+    // flb_plg_info(ctx->ins, "[cb_collectx_flush] got reply from recvfrom");
+
+
+    free(tag_string);
     FLB_OUTPUT_RETURN(FLB_OK);
 }
 
@@ -125,10 +159,9 @@ static int cb_collectx_exit(void *data, struct flb_config *config)
 {
     struct flb_collectx *ctx = data;
 
+    free(ctx->collector_sock_name);
+    ctx->collector_sock_name = NULL;
     if (ctx != NULL) {
-        if (ctx->clx_provider_handle != NULL) {
-            dlclose(ctx->clx_provider_handle);
-        }
         flb_free(ctx);
     }
     return 0;
