@@ -37,7 +37,7 @@
 #include <sys/un.h>
 
 
-#define VERBOSE
+// #define VERBOSE
 #define SERVER_SOCK_PATH "/tmp/fb_sock_server"
 #define CLIENT_SOCK_PATH "/tmp/fb_sock_client"
 
@@ -277,12 +277,14 @@ void* init(const char* output_plugin_name, const char * host, const char * port,
 
 
 int add_data(void* api_ctx, void* data, int len) {
-    if (api_ctx == NULL)
+    if (api_ctx == NULL) {
         return -1;
+    }
 
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
-    if (len == 0)
+    if (len == 0) {
         return 0;
+    }
 #ifdef VERBOSE
     //printf("Append raw data of len %d\n", len);
     // DumpHex(data, len);
@@ -293,8 +295,9 @@ int add_data(void* api_ctx, void* data, int len) {
 
 
 int finalize(void* api_ctx) {
-    if (api_ctx == NULL)
+    if (api_ctx == NULL) {
         return -1;
+    }
     raw_msgpack_api_context_t* raw_ctx = (raw_msgpack_api_context_t*) api_ctx;
 
 #ifdef VERBOSE
