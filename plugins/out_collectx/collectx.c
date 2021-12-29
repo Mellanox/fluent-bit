@@ -95,8 +95,6 @@ static void cb_collectx_flush(const void *data, size_t bytes,
     (void) i_ins;
     (void) config;
 
-    flb_plg_info(ctx->ins, "[cb_collectx_flush] entered");
-
     /* A tag might not contain a NULL byte */
     tag_string = flb_malloc(tag_len + 1);
     if (!tag_string) {
@@ -114,6 +112,7 @@ static void cb_collectx_flush(const void *data, size_t bytes,
     msg.buffer_addr = (void*)data;
     msg.data_size   = bytes;
     msg.tag         = tag_string;
+    msg.status      = 0;
 
     // flb_plg_info(ctx->ins, "[cb_collectx_flush] send data of size %zu, with tag '%s'", bytes, tag_string);
 
@@ -123,32 +122,39 @@ static void cb_collectx_flush(const void *data, size_t bytes,
     snprintf(collector_sock_address.sun_path, sizeof(collector_sock_address.sun_path),"%s", ctx->collector_sock_name);
 
     socklen_t address_length = sizeof(struct sockaddr_un);
-    int bytes_sent = sendto(ctx->fluent_aggr_sock_fd, (char*) &msg, msg_len, 0,
-                            (struct sockaddr*) &collector_sock_address, address_length);
 
-    if (bytes_sent == -1) {
-        flb_plg_info(ctx->ins, "[cb_collectx_flush] sendto() failed:  %s", strerror(errno));
-        FLB_OUTPUT_RETURN(FLB_RETRY);
-    }
-    if (bytes_sent != msg_len) {
-        flb_plg_info(ctx->ins, "[cb_collectx_flush] sendto() sent %d instead of %d bytes", bytes_sent, msg_len);
-        FLB_OUTPUT_RETURN(FLB_RETRY);
-    }
+    do {
+        int bytes_sent = sendto(ctx->fluent_aggr_sock_fd, (char*) &msg, msg_len, 0,
+                                (struct sockaddr*) &collector_sock_address, address_length);
 
-    // RECEIVE MSG TO FINISH with buffer
-    socklen_t bytes_in = recvfrom(ctx->fluent_aggr_sock_fd, (char*) &msg, msg_len, 0,
-                                  (struct sockaddr*) &collector_sock_address, (socklen_t*) &address_length);
+        if (bytes_sent == -1) {
+            flb_plg_info(ctx->ins, "[cb_collectx_flush] sendto() failed:  %s", strerror(errno));
+            FLB_OUTPUT_RETURN(FLB_RETRY);
+        }
+        if (bytes_sent != msg_len) {
+            flb_plg_info(ctx->ins, "[cb_collectx_flush] sendto() sent %d instead of %d bytes", bytes_sent, msg_len);
+            FLB_OUTPUT_RETURN(FLB_RETRY);
+        }
 
-    if (bytes_in != msg_len) {
-        flb_plg_info(ctx->ins, "[cb_collectx_flush] received %d, expected %d bytes", bytes_in, msg_len);
-        return FLB_OUTPUT_RETURN(FLB_RETRY);
-    }
-    if (bytes_in < 0) {
-        flb_plg_info(ctx->ins, "[cb_collectx_flush] recvfrom() failed: %s", strerror(errno));
-        return FLB_OUTPUT_RETURN(FLB_RETRY);
-    }
-    // flb_plg_info(ctx->ins, "[cb_collectx_flush] got reply from recvfrom");
+        // RECEIVE MSG TO FINISH with buffer
+        socklen_t bytes_in = recvfrom(ctx->fluent_aggr_sock_fd, (char*) &msg, msg_len, 0,
+                                    (struct sockaddr*) &collector_sock_address, (socklen_t*) &address_length);
 
+        if (bytes_in != msg_len) {
+            flb_plg_info(ctx->ins, "[cb_collectx_flush] received %d, expected %d bytes", bytes_in, msg_len);
+            return FLB_OUTPUT_RETURN(FLB_RETRY);
+        }
+        if (bytes_in < 0) {
+            flb_plg_info(ctx->ins, "[cb_collectx_flush] recvfrom() failed: %s", strerror(errno));
+            return FLB_OUTPUT_RETURN(FLB_RETRY);
+        }
+
+        flb_plg_info(ctx->ins, "[cb_collectx_flush] got reply from recvfrom with status %d", msg.status);
+
+        if (msg.status == -1) {
+            FLB_OUTPUT_RETURN(FLB_RETRY);
+        }
+    } while (msg.status != 0);
 
     free(tag_string);
     FLB_OUTPUT_RETURN(FLB_OK);

@@ -31,6 +31,7 @@ typedef struct ipc_msg_t {
     uint64_t data_size;
     char*    buffer_addr;
     char*    tag;
+    int      status;  // -1 for retry, 0 for success, 1 for progressing
 } ipc_msg_t;
 
 struct flb_collectx {
