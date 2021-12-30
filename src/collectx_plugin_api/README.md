@@ -1,58 +1,25 @@
-<!--
+# Fluent Bit Collectx Output Plugin API
+
+This shared library implements API for pushing data into Collectx event loop.
+It is paired with fluent_aggr provider of the Collectx.
+
+This allows Collectx to run collectx_out FluentBit plugin internally.
+
+# Description
+When data arrives to Fluent collectx_out plugin, it signals to Collectx to start
+processing the data.
+Collectx replies with 3 possible statuses:
+- Done. This means that Fluent buffer can be released.
+- Progressing. Fluent will not release buffer and will send another message to progress.
+- Busy. Collectx is busy with progressing previous chunk. Current chunk flush will be retried later.
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Fluent Bit / Pass Raw MessagePack data
-
-This shared library implements API for passing raw MessagePack data through:
-API -> ```in_raw_msgapck``` input plugin -> output plugin.
-
-
-
-# API for Collectx
-This library has simple API, consisting of 3 function:
-
-
+# API
+API consists only of initialize and finilize functions.
 | Component        | Description       |
 | ------------     | ---------------------------------- |
-| void* init(const char* *output_plugin_name*, const char * *host*, const char * *port*, const char * *socket_prefix*)                  | Initializes FluentBit instance with custom input plugin and *output_plugin_name* output plugin. *host* and *port* are set to output plugin. *socket_prefix* is used as a prefix for Unix domain sockets. Returns void* to API context.|                     |
-| int add_data(void* api_ctx, void* data, int len)      | Main routine to pass the data. Inputs pointer to API context *api_ctx* MessagePack packed raw *data*, copies it into local buffer and signals to input plugin that buffer is ready. Signaling exploits Unix socket.            |
-| int finalize(void* api_ctx)        | Releases context *api_ctx*, FluentBit instance and Unix sockets                     |
+| void* initialize(uint16_t port, int fluent_aggr_sock_fd, const char* collector_sock_name)                   | Initializes FluentBit instance with forward input and custom collectx_out plugin. *port* is a port for input plugin, *fluent_aggr_sock_fd* and *collector_sock_name* are Unix domain sockets for signaling. Returns void* to API context.|                     |
+| int finalize(void* api_ctx)        | Releases context *api_ctx* and FluentBit instance. |
 
 # Build
 Build the Fluent Bit:
@@ -60,38 +27,4 @@ Build the Fluent Bit:
   - ```cmake3 ..```
   - ```make```
 
-to find "libraw_msgpack_api.so" in "build/lib" folder
-
-# Usage with python:
-
-
-Then, use ctypes to load and call the library:
-```
-from ctypes import *
-import msgpack
-
-# load API library
-path_to_lib ="fluent-bit/build/lib/libraw_msgpack_api.so"
-lib = CDLL(path_to_lib)
-print(lib)
-
-# set I/O types
-lib.init.argtypes = [c_char_p, c_char_p, c_char_p, c_char_p]
-lib.init.restype  = c_void_p
-
-lib.add_data.argtypes = [c_void_p, c_void_p, c_int]
-lib.finalize.argtypes = [c_void_p]
-
-# init API context
-api_ctx = lib.init("forward", "localhost", "24284", "")
-
-# generate and send data to Fluent Bit
-for i in range(1000):
-    # pack some data with MessagePack
-    buf = msgpack.packb([i,[i+1,i+2]], use_bin_type=True)
-
-    y = lib.add_data(api_ctx, buf, len(buf))
-
-# clear memory
-lib.finalize(api_ctx)
-``` -->
+to find "libcollectx_plugin_api.so" in "build/lib" folder
