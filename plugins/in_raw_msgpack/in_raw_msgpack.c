@@ -77,10 +77,6 @@ int set_sock_fd(struct flb_raw_msgpack_config *ctx) {
         printf("[Fluent Bit] [in_raw_msgpack] Failed to create a socket\n");
         return -1;
     }
-    if ((listen(ctx->sock_fd, 5)) != 0) {
-        printf("[Fluent Bit] [in_raw_msgpack] Listen on socket failed...\n");
-        return -1;
-    }
     return 0;
 }
 
