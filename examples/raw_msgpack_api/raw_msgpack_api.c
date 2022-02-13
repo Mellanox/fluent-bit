@@ -16,17 +16,17 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License
  *
- *  Modified Work: 
- * 
- *  Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED. 
- * 
- *  This software product is a proprietary product of NVIDIA CORPORATION & 
- *  AFFILIATES (the "Company") and all right, title, and interest in and to the 
- *  software product, including all associated intellectual property rights, are 
- *  and shall remain exclusively with the Company. 
- * 
- *  This software product is governed by the End User License Agreement 
- *  provided with the software product. 
+ *  Modified Work:
+ *
+ *  Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
+ *
+ *  This software product is a proprietary product of NVIDIA CORPORATION &
+ *  AFFILIATES (the "Company") and all right, title, and interest in and to the
+ *  software product, including all associated intellectual property rights, are
+ *  and shall remain exclusively with the Company.
+ *
+ *  This software product is governed by the End User License Agreement
+ *  provided with the software product.
  *
  */
 
@@ -321,8 +321,8 @@ int finalize(void* api_raw_ctx) {
     printf("\t\t\t\t\t\tbuffer_addr '%p'\n", raw_ctx->buffer);
 #endif
     // clean up socket
-    close(raw_ctx->doorbell_cli);
     unlink(raw_ctx->client_addr);
+    close(raw_ctx->doorbell_cli);
     // finilize fluent bit
     flb_stop(raw_ctx->ctx);
 

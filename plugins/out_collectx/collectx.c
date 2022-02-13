@@ -34,8 +34,8 @@
 
 
 typedef struct collectx_plugin_input_data {
-    char* collector_sock_name;
-    int   fluent_aggr_sock_fd;
+    int32_t fluent_aggr_sock_fd;
+    char    collector_sock_name[108];
 } collectx_plugin_input_data_t;
 
 
@@ -114,7 +114,7 @@ static void cb_collectx_flush(const void *data, size_t bytes,
     msg.tag         = tag_string;
     msg.status      = 0;
 
-    // flb_plg_info(ctx->ins, "[cb_collectx_flush] send data of size %zu, with tag '%s'", bytes, tag_string);
+    flb_plg_info(ctx->ins, "[cb_collectx_flush] send data of size %zu, with tag '%s'", bytes, tag_string);
 
     struct sockaddr_un collector_sock_address;
     memset(&collector_sock_address, 0, sizeof(struct sockaddr_un));
@@ -149,14 +149,14 @@ static void cb_collectx_flush(const void *data, size_t bytes,
             return FLB_OUTPUT_RETURN(FLB_RETRY);
         }
 
-        // flb_plg_info(ctx->ins, "[cb_collectx_flush] got reply from recvfrom with status %d", msg.status);
+        flb_plg_info(ctx->ins, "[cb_collectx_flush] got reply from recvfrom with status %d", msg.status);
 
         if (msg.status == -1) {
             FLB_OUTPUT_RETURN(FLB_RETRY);
         }
     } while (msg.status != 0);
 
-    free(tag_string);
+    flb_free(tag_string);
     FLB_OUTPUT_RETURN(FLB_OK);
 }
 
@@ -165,7 +165,7 @@ static int cb_collectx_exit(void *data, struct flb_config *config)
 {
     struct flb_collectx *ctx = data;
 
-    free(ctx->collector_sock_name);
+    flb_free(ctx->collector_sock_name);
     ctx->collector_sock_name = NULL;
     if (ctx != NULL) {
         flb_free(ctx);
