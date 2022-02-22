@@ -59,10 +59,12 @@ struct flb_stdout_raw {
     char     check_file_path[128];
     int      check_in_raw_msgpack_fd;
     char     fieds_counter_log_path[128];
-    FILE*      log_fields_count_fd;
+    FILE*    log_fields_count_fd;
     unsigned total_num_received_records;
 
     struct record_counters_t * record_counters;
+    FILE*    out_stream;
+    uint64_t global_record_cnt;
 
     // to measure time
     bool     measure_speed;

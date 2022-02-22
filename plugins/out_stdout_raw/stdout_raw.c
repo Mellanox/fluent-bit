@@ -118,7 +118,6 @@ void check_msgpack_keys_stdout_raw(FILE* out, msgpack_object o, bool iskey, int*
 
 
 record_counters_t* create_record_counters() {
-    printf("[create_record_counters]\n");
     record_counters_t* rc = calloc(1, sizeof(record_counters_t));
     rc->num_types = 0;
     rc->type_name = (type_name_t *) calloc(1, sizeof(type_name_t));
@@ -212,7 +211,6 @@ void update_record_counters(record_counters_t* rc, msgpack_object o) {
 
 void print_record_counters(FILE* fd, record_counters_t* rc) {
     int total_records = 0;
-    printf("\n[print_record_counters]\n");
     int i, j;
     for (i = 0; i < rc->num_types; i++ ) {
         total_records += rc->num_records[i];
@@ -251,6 +249,33 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
     }
 
     ctx->total_num_received_records = 0;
+    ctx->global_record_cnt = 0;
+
+
+    ctx->out_stream = stdout;
+    tmp = flb_output_get_property("stream", ins);
+
+    if (tmp) {
+        if (strcmp(tmp, "stdout") == 0) {
+            ctx->out_stream = stdout;
+            flb_plg_info(ctx->ins, "out_stream = stdout");
+        } else if (strcmp(tmp,"stderr") == 0) {
+            ctx->out_stream = stderr;
+            flb_plg_info(ctx->ins, "out_stream = stderr");
+        } else { // stream to file
+            FILE* stream_file = fopen(tmp, "w");
+            if (!stream_file) {
+                flb_errno();
+                flb_free(ctx);
+                return -1;
+            }
+            ctx->out_stream = stream_file;
+            flb_plg_info(ctx->ins, "out_stream = %s", tmp);
+        }
+    } else {
+        flb_plg_info(ctx->ins, "no stream found. using default stdout");
+    }
+
 
     ctx->bytes_milestone = 1024*1024; // default is 1 MB
     tmp = flb_output_get_property("measure_speed_MB_milestone", ins);
@@ -267,12 +292,10 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
             ctx->ts_end         = 0;
             ctx->bytes_received = 0;
 
-            printf("[STDOUT_RAW] Speed measurements will be printed each %"PRIu64" bytes (%"PRIu64" MB).\n",
-                                    ctx->bytes_milestone, ctx->bytes_milestone/1024/1024);
+            flb_plg_info(ctx->ins, "Speed measurements will be printed each %"PRIu64" bytes (%"PRIu64" MB)",
+                         ctx->bytes_milestone, ctx->bytes_milestone/1024/1024);
         }
     }
-
-
 
     ctx->use_bin_file_check = 0;
     tmp = flb_output_get_property("check_dir", ins);
@@ -288,7 +311,7 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
     if (ctx->use_bin_file_check) {
         ctx->log_fields_count_fd = fopen(ctx->fieds_counter_log_path, "ab");
         if (ctx->log_fields_count_fd == NULL) {
-            printf("Cannot opend %s. Disabling logs.\n", ctx->fieds_counter_log_path);
+            flb_plg_warn(ctx->ins, "Cannot opend %s. Disabling logs.\n", ctx->fieds_counter_log_path);
             ctx->use_bin_file_check = 0;
         } else {
             fprintf(ctx->log_fields_count_fd, "Records:\n");
@@ -298,7 +321,7 @@ static int cb_stdout_raw_init(struct flb_output_instance *ins,
     if (ctx->use_bin_file_check) {
         FILE *fp = fopen(ctx->check_file_path, "ab");
         if (fp == NULL) {
-            printf("Cannot opend %s. Disabling logs.\n", ctx->check_file_path);
+            flb_plg_warn(ctx->ins, "Cannot opend %s. Disabling logs.\n", ctx->check_file_path);
             ctx->use_bin_file_check = 0;
         } else {
             ctx->check_in_raw_msgpack_fd = fileno(fp);
@@ -369,7 +392,7 @@ static uint64_t clx_parse_cpuinfo(void) {
     }
     if (f < 1.0) {
         f = 1.0;  // if cannot get correct frequency - use TSC
-        printf("[warning] Could not get correct value of frequency. Values are in ticks.");
+        fprintf(stderr, "Could not get correct value of frequency. Values are in ticks.");
     } else {
         f *= 1.0e9;  // Value in 'model name' is in GHz
     }
@@ -427,7 +450,7 @@ static void measure_recv_speed(const void *data, size_t bytes, struct flb_stdout
         uint64_t t_diff_clocks = ctx->ts_end - ctx->ts_begin;
         uint64_t time_diff = clx_convert_cycles_to_usec(t_diff_clocks);
 
-        printf ("received %"PRIu64" bytes in %"PRIu64" usec\n", ctx->bytes_received, time_diff );
+        flb_plg_info(ctx->ins, "received %"PRIu64" bytes in %"PRIu64" usec\n", ctx->bytes_received, time_diff );
 
         ctx->bytes_received = 0;
         ctx->ts_begin = ctx->ts_end;
@@ -443,7 +466,7 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
                             struct flb_config *config)
 {
     msgpack_unpacked result;
-    size_t off = 0, cnt = 0;
+    size_t off = 0;
     struct flb_stdout_raw *ctx = out_context;
     flb_sds_t json;
     char *buf = NULL;
@@ -472,7 +495,7 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
             * breakline.
             */
             if (ctx->out_format != FLB_PACK_JSON_FORMAT_LINES) {
-                printf("\n");
+                fprintf(stdout, "\n");
             }
             fflush(stdout);
         } else {
@@ -488,10 +511,9 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
             msgpack_unpacked_init(&result);
 
             while (msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
-                printf("[%zd] %s: ", cnt++, buf);
-                msgpack_object_print(stdout, result.data);
-                printf("\n\n");
-                fflush(stdout);
+                fprintf(ctx->out_stream, "[%zd] %s: ", ctx->global_record_cnt++, buf);
+                msgpack_object_print(ctx->out_stream, result.data);
+                fprintf(ctx->out_stream, "\n");
 
                 if (ctx->use_bin_file_check) {
                     ctx->total_num_received_records++;
@@ -503,7 +525,7 @@ static void cb_stdout_raw_flush(const void *data, size_t bytes,
             flb_free(buf);
         }
 
-        fflush(stdout);
+        fflush(ctx->out_stream);
     }  // measure_speed
 
     if (ctx->use_bin_file_check) {
@@ -537,6 +559,9 @@ static int cb_stdout_raw_exit(void *data, struct flb_config *config)
         if (ctx->record_counters) {
             destroy_record_counters(ctx->record_counters);
         }
+        if (ctx->out_stream != stdout && ctx->out_stream != stderr) {
+            fclose(ctx->out_stream);
+        }
     }
     flb_free(ctx);
     return 0;
@@ -548,6 +573,11 @@ static struct flb_config_map config_map[] = {
      FLB_CONFIG_MAP_STR, "check_dir", NULL,
      0, FLB_FALSE, 0,
      "Specifies the output dir to check end-to-end data transfer."
+    },
+    {
+     FLB_CONFIG_MAP_BOOL, "stream", NULL,
+     0, FLB_FALSE, 0,
+     "Stream destination: file name, stdout, or stderr. Default is stdout."
     },
     {
      FLB_CONFIG_MAP_BOOL, "measure_speed", false,

@@ -63,6 +63,7 @@ void* initialize(uint16_t port, int fluent_aggr_sock_fd, const char* collector_s
     sprintf(port_str, "%d", port);
     port_str[5] = '\0';
     flb_input_set(api_ctx->flb_ctx, api_ctx->in_ffd, "Port", port_str, NULL);
+    flb_input_set(api_ctx->flb_ctx, api_ctx->in_ffd, "Retry_Limit", "no_limits", NULL);
 
     collectx_plugin_input_data_t* input_data = calloc(1, sizeof(collectx_plugin_input_data_t));
     input_data->fluent_aggr_sock_fd = (uint32_t)fluent_aggr_sock_fd;
