@@ -58,7 +58,7 @@ set(src
   flb_random.c
   flb_plugin.c
   flb_gzip.c
-  flb_http_client.c
+  #flb_http_client.c
   flb_callback.c
   flb_strptime.c
   flb_fstore.c
