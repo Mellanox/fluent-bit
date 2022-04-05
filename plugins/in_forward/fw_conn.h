@@ -22,6 +22,8 @@
 
 #define FLB_IN_FW_CHUNK_SIZE      "1024000" /* 1MB */
 #define FLB_IN_FW_CHUNK_MAX_SIZE  "6144000" /* =FLB_IN_FW_CHUNK_SIZE * 6.  6MB */
+// #define FLB_IN_FW_CHUNK 320000
+
 #define FLB_IN_FW_NONCE_SIZE      16
 #define FLB_IN_FW_SALT_SIZE       16
 
