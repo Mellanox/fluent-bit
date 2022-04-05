@@ -66,6 +66,8 @@ DEFINE_OPTION(FLB_IN_WINDOWS_EXPORTER_METRICS "Enable windows exporter metrics i
 DEFINE_OPTION(FLB_IN_WINEVTLOG                "Enable Windows EvtLog input plugin"           OFF)
 DEFINE_OPTION(FLB_IN_WINSTAT                  "Enable Windows Stat input plugin"             OFF)
 DEFINE_OPTION(FLB_IN_EBPF                     "Enable Linux eBPF input plugin"               OFF)
+DEFINE_OPTION(FLB_IN_RAW_MSGPACK              "Enable Raw MessagePack input plugin"          ON)
+
 
 # Processors
 # ==========
