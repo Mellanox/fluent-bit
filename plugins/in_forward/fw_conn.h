@@ -21,7 +21,8 @@
 #ifndef FLB_IN_FW_CONN_H
 #define FLB_IN_FW_CONN_H
 
-#define FLB_IN_FW_CHUNK 32768
+//#define FLB_IN_FW_CHUNK 32768
+#define FLB_IN_FW_CHUNK 320000  // romanpr 
 
 enum {
     FW_NEW        = 1,  /* it's a new connection                */
