@@ -1,3 +1,16 @@
+# Modified Work:
+#
+# Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
+
+# This software product is a proprietary product of NVIDIA CORPORATION &
+# AFFILIATES (the "Company") and all right, title, and interest in and to the
+# software product, including all associated intellectual property rights, are
+# and shall remain exclusively with the Company.
+#
+# This software product is governed by the End User License Agreement
+# provided with the software product.
+#
+
 add_definitions(-DFLB_CORE=1)
 
 # Core Source
@@ -45,7 +58,7 @@ set(src
   flb_random.c
   flb_plugin.c
   flb_gzip.c
-  flb_http_client.c
+  #flb_http_client.c
   flb_callback.c
   flb_strptime.c
   flb_fstore.c
@@ -413,4 +426,9 @@ if(FLB_BINARY)
     "${PROJECT_SOURCE_DIR}/conf/plugins.conf"
     DESTINATION ${FLB_INSTALL_CONFDIR})
 
+endif()
+
+if(FLB_RAW_MSGPACK_API)
+  add_subdirectory(raw_msgpack_api)
+  add_subdirectory(collectx_plugin_api)
 endif()

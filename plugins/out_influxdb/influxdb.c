@@ -16,6 +16,19 @@
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
+ *
+ *  Modified Work:
+ *
+ *  Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
+ *
+ *  This software product is a proprietary product of NVIDIA CORPORATION &
+ *  AFFILIATES (the "Company") and all right, title, and interest in and to the
+ *  software product, including all associated intellectual property rights, are
+ *  and shall remain exclusively with the Company.
+ *
+ *  This software product is governed by the End User License Agreement
+ *  provided with the software product.
+ *
  */
 
 #include <fluent-bit/flb_output_plugin.h>
@@ -202,15 +215,22 @@ static char *influxdb_format(const char *tag, int tag_len,
             }
             else if (v->type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
                 val = tmp;
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRIu64, v->via.u64);
+                if (ctx->influx_uint_support) {
+                    // We cannot parse uint64_t as int64_t because of the overflow
+                    // This will not work with influx of versions less than 2.0.0
+                    // influx requires 'influx_uint_support=true' to be able to parse uints
+                    val_len = snprintf(tmp, sizeof(tmp), "%" PRIu64 "u", v->via.u64);
+                } else {
+                    val_len = snprintf(tmp, sizeof(tmp), "%" PRIu64, v->via.u64);
+                }
             }
             else if (v->type == MSGPACK_OBJECT_NEGATIVE_INTEGER) {
                 val = tmp;
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%" PRId64, v->via.i64);
+                val_len = snprintf(tmp, sizeof(tmp), "%" PRId64 "i", v->via.i64);
             }
             else if (v->type == MSGPACK_OBJECT_FLOAT || v->type == MSGPACK_OBJECT_FLOAT32) {
                 val = tmp;
-                val_len = snprintf(tmp, sizeof(tmp) - 1, "%f", v->via.f64);
+                val_len = snprintf(tmp, sizeof(tmp), "%f", v->via.f64);
             }
             else if (v->type == MSGPACK_OBJECT_STR) {
                 /* String value */
@@ -284,8 +304,7 @@ static char *influxdb_format(const char *tag, int tag_len,
                 influxdb_bulk_append_bulk(bulk, bulk_body, ' ') != 0) {
                 goto error;
             }
-        } 
-        else {
+        } else {
             flb_plg_warn(ctx->ins, "skip send record, "
                          "since no record available "
                          "or all fields are tagged in record");
@@ -296,7 +315,6 @@ static char *influxdb_format(const char *tag, int tag_len,
         bulk_head->len = 0;
         bulk_body->len = 0;
     }
-
     msgpack_unpacked_destroy(&result);
 
     *out_size = bulk->len;
@@ -330,6 +348,7 @@ error:
 static int cb_influxdb_init(struct flb_output_instance *ins, struct flb_config *config,
                             void *data)
 {
+
     int io_flags = 0;
     const char *tmp;
     struct flb_upstream *upstream;
@@ -353,6 +372,13 @@ static int cb_influxdb_init(struct flb_output_instance *ins, struct flb_config *
         io_flags = FLB_IO_TCP;
     }
 
+    /* check if need enable influx_uint_support */
+    // this will work only with influx versions >= 2.0.0
+    ctx->influx_uint_support = 0;
+    tmp = flb_output_get_property("influx_uint_support", ins);
+    if (tmp) {
+        ctx->influx_uint_support = atoi(tmp);
+    }
     /* database */
     tmp = flb_output_get_property("database", ins);
     if (!tmp) {

@@ -31,49 +31,41 @@
  *
  */
 
-#ifndef FLB_OUT_INFLUXDB_H
-#define FLB_OUT_INFLUXDB_H
+#ifndef FLB_IN_RAW_MSGPACK_H
+#define FLB_IN_RAW_MSGPACK_H
 
-#include <fluent-bit/flb_output.h>
-#include <fluent-bit/flb_time.h>
+#include <fluent-bit/flb_info.h>
+#include <fluent-bit/flb_input.h>
 
-#define FLB_INFLUXDB_HOST "127.0.0.1"
-#define FLB_INFLUXDB_PORT 8086
 
-struct flb_influxdb {
-    uint64_t seq;
+typedef struct in_plugin_data_t {
+    char * buffer_ptr;
+    char * server_address;
+} in_plugin_data_t;
 
-    char uri[256];
+typedef struct doorbell_msg_t {
+    int   data_len;
+    char* data_buf;
+} doorbell_msg_t;
 
-    /* database */
-    char *db_name;
-    int  db_len;
+struct flb_raw_msgpack_config {
+    // from 'stdin'
+    // int  fd;
+    int  coll_fd;
+    // void* ptr;          // to point either to buffer or to shared memory
 
-    /* HTTP Auth */
-    char *http_user;
-    char *http_passwd;
+    int  buf_len;                     /* read buffer length    */
+    char buf[8192 * 2];               /* read buffer: 16Kb max */
+    struct flb_parser *parser;
+    struct flb_pack_state pack_state;
+    // ============
 
-    /* sequence tag */
-    char *seq_name;
-    int seq_len;
+    char unix_sock_path[128];
+    int sock_fd;
+    // =================
 
-    /* auto_tags: on/off */
-    int auto_tags;
-
-    /* influx_uint_support: on/off */
-    int influx_uint_support;
-
-    /* tag_keys: space separated list of key */
-    struct mk_list *tag_keys;
-
-    /* Upstream connection to the backend server */
-    struct flb_upstream *u;
-
-    /* used for incrementing identical timestamps */
-    struct flb_time ts_dupe;
-    struct flb_time ts_last;
-
-    struct flb_output_instance *ins;
+    doorbell_msg_t msg;
+    struct flb_input_instance *ins;
 };
 
-#endif
+#endif  // FLB_IN_RAW_MSGPACK_H

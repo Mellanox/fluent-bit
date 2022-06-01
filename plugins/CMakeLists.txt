@@ -1,3 +1,17 @@
+
+# Modified Work:
+#
+# Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
+
+# This software product is a proprietary product of NVIDIA CORPORATION &
+# AFFILIATES (the "Company") and all right, title, and interest in and to the
+# software product, including all associated intellectual property rights, are
+# and shall remain exclusively with the Company.
+#
+# This software product is governed by the End User License Agreement
+# provided with the software product.
+#
+
 set(flb_plugins "" CACHE INTERNAL "flb_plugins")
 
 # REGISTER_IN_PLUGIN
@@ -135,6 +149,7 @@ endif()
 REGISTER_IN_PLUGIN("in_emitter")
 REGISTER_IN_PLUGIN("in_tail")
 REGISTER_IN_PLUGIN("in_dummy")
+REGISTER_IN_PLUGIN("in_raw_msgpack")
 REGISTER_IN_PLUGIN("in_head")
 REGISTER_IN_PLUGIN("in_health")
 REGISTER_IN_PLUGIN("in_http")
@@ -166,47 +181,49 @@ REGISTER_IN_PLUGIN("in_mqtt")
 REGISTER_IN_PLUGIN("in_lib")
 REGISTER_IN_PLUGIN("in_forward")
 REGISTER_IN_PLUGIN("in_random")
-REGISTER_OUT_PLUGIN("out_azure")
-REGISTER_OUT_PLUGIN("out_azure_blob")
-REGISTER_OUT_PLUGIN("out_bigquery")
+#REGISTER_OUT_PLUGIN("out_azure")
+#REGISTER_OUT_PLUGIN("out_azure_blob")
+#REGISTER_OUT_PLUGIN("out_bigquery")
+REGISTER_OUT_PLUGIN("out_collectx")
 REGISTER_OUT_PLUGIN("out_counter")
-REGISTER_OUT_PLUGIN("out_datadog")
-REGISTER_OUT_PLUGIN("out_es")
+#REGISTER_OUT_PLUGIN("out_datadog")
+#REGISTER_OUT_PLUGIN("out_es")
 REGISTER_OUT_PLUGIN("out_exit")
 REGISTER_OUT_PLUGIN("out_file")
 REGISTER_OUT_PLUGIN("out_forward")
 REGISTER_OUT_PLUGIN("out_http")
-REGISTER_OUT_PLUGIN("out_influxdb")
-REGISTER_OUT_PLUGIN("out_logdna")
-REGISTER_OUT_PLUGIN("out_loki")
+#REGISTER_OUT_PLUGIN("out_influxdb")
+#REGISTER_OUT_PLUGIN("out_logdna")
+#REGISTER_OUT_PLUGIN("out_loki")
 REGISTER_OUT_PLUGIN("out_kafka")
-REGISTER_OUT_PLUGIN("out_kafka_rest")
+#REGISTER_OUT_PLUGIN("out_kafka_rest")
 REGISTER_OUT_PLUGIN("out_nats")
-REGISTER_OUT_PLUGIN("out_nrlogs")
+#REGISTER_OUT_PLUGIN("out_nrlogs")
 REGISTER_OUT_PLUGIN("out_null")
 if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
   REGISTER_OUT_PLUGIN("out_plot")
 endif()
 REGISTER_OUT_PLUGIN("out_pgsql")
 REGISTER_OUT_PLUGIN("out_retry")
-REGISTER_OUT_PLUGIN("out_slack")
-REGISTER_OUT_PLUGIN("out_splunk")
-REGISTER_OUT_PLUGIN("out_stackdriver")
+#REGISTER_OUT_PLUGIN("out_slack")
+#REGISTER_OUT_PLUGIN("out_splunk")
+#REGISTER_OUT_PLUGIN("out_stackdriver")
 REGISTER_OUT_PLUGIN("out_stdout")
+REGISTER_OUT_PLUGIN("out_stdout_raw")
 REGISTER_OUT_PLUGIN("out_syslog")
 REGISTER_OUT_PLUGIN("out_tcp")
 REGISTER_OUT_PLUGIN("out_td")
 REGISTER_OUT_PLUGIN("out_lib")
 REGISTER_OUT_PLUGIN("out_flowcounter")
 REGISTER_OUT_PLUGIN("out_gelf")
-REGISTER_OUT_PLUGIN("out_cloudwatch_logs")
-REGISTER_OUT_PLUGIN("out_kinesis_firehose")
-REGISTER_OUT_PLUGIN("out_s3")
+#REGISTER_OUT_PLUGIN("out_cloudwatch_logs")
+#REGISTER_OUT_PLUGIN("out_kinesis_firehose")
+#REGISTER_OUT_PLUGIN("out_s3")
 
 # FILTERS
 # =======
 REGISTER_FILTER_PLUGIN("filter_alter_size")
-REGISTER_FILTER_PLUGIN("filter_aws")
+#REGISTER_FILTER_PLUGIN("filter_aws")
 REGISTER_FILTER_PLUGIN("filter_record_modifier")
 REGISTER_FILTER_PLUGIN("filter_throttle")
 REGISTER_FILTER_PLUGIN("filter_throttle_size")

@@ -16,15 +16,37 @@
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
+ *
+ *   Modified Work:
+ *
+ *  Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
+ *
+ *  This software product is a proprietary product of NVIDIA CORPORATION &
+ *  AFFILIATES (the "Company") and all right, title, and interest in and to the
+ *  software product, including all associated intellectual property rights, are
+ *  and shall remain exclusively with the Company.
+ *
+ *  This software product is governed by the End User License Agreement
+ *  provided with the software product.
+ *
  */
 
 #ifndef FLB_OUT_STDOUT
 #define FLB_OUT_STDOUT
 
+
 #include <fluent-bit/flb_output_plugin.h>
 #include <fluent-bit/flb_sds.h>
 
 struct flb_stdout {
+    // to check in_row_msgpack
+    int check_in_raw_msgpack_fd;
+
+    // to measure time
+    uint64_t bytes_received;
+    uint64_t ts_begin;
+    uint64_t ts_end;
+
     int out_format;
     int json_date_format;
     flb_sds_t json_date_key;

@@ -31,48 +31,52 @@
  *
  */
 
-#ifndef FLB_OUT_INFLUXDB_H
-#define FLB_OUT_INFLUXDB_H
+#ifndef FLB_OUT_STDOUT_RAW
+#define FLB_OUT_STDOUT_RAW
 
-#include <fluent-bit/flb_output.h>
-#include <fluent-bit/flb_time.h>
 
-#define FLB_INFLUXDB_HOST "127.0.0.1"
-#define FLB_INFLUXDB_PORT 8086
+#include <fluent-bit/flb_output_plugin.h>
+#include <fluent-bit/flb_sds.h>
 
-struct flb_influxdb {
-    uint64_t seq;
+typedef char type_name_t[128];
 
-    char uri[256];
+typedef struct record_counters_t{
+    int           num_types;
+    type_name_t*  type_name;
+    int*          num_records;
+    int**         num_fields_per_record;
+} record_counters_t;
 
-    /* database */
-    char *db_name;
-    int  db_len;
+struct record_counters_t* create_record_counters();
+void destroy_record_counters(record_counters_t* rc);
+void update_record_counters(record_counters_t* rc, msgpack_object o);
+void print_record_counters(FILE* fd, record_counters_t* rc);
 
-    /* HTTP Auth */
-    char *http_user;
-    char *http_passwd;
+struct flb_stdout_raw {
+    // to check in_raw_msgpack
+    bool     use_bin_file_check;
+    char*    check_dir;
+    char     check_file_path[128];
+    int      check_in_raw_msgpack_fd;
+    char     fieds_counter_log_path[128];
+    FILE*    log_fields_count_fd;
+    unsigned total_num_received_records;
 
-    /* sequence tag */
-    char *seq_name;
-    int seq_len;
+    struct record_counters_t * record_counters;
+    FILE*    out_stream;
+    uint64_t global_record_cnt;
 
-    /* auto_tags: on/off */
-    int auto_tags;
+    // to measure time
+    bool     measure_speed;
+    uint64_t bytes_milestone;
+    uint64_t bytes_received;
+    uint64_t ts_begin;
+    uint64_t ts_end;
 
-    /* influx_uint_support: on/off */
-    int influx_uint_support;
-
-    /* tag_keys: space separated list of key */
-    struct mk_list *tag_keys;
-
-    /* Upstream connection to the backend server */
-    struct flb_upstream *u;
-
-    /* used for incrementing identical timestamps */
-    struct flb_time ts_dupe;
-    struct flb_time ts_last;
-
+    int out_format;
+    int json_date_format;
+    flb_sds_t json_date_key;
+    flb_sds_t date_key;
     struct flb_output_instance *ins;
 };
 
