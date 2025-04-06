@@ -124,11 +124,16 @@ static int in_raw_msgpack_collect(struct flb_input_instance *ins,
         return -1;
     }
 
-    flb_input_chunk_append_raw(ins, NULL, 0, ctx->msg.data_buf, ctx->msg.data_len);
-
+    size_t records_num = flb_mp_count(ctx->msg.data_buf, ctx->msg.data_len);
+    flb_input_chunk_append_raw(ins, FLB_INPUT_LOGS, records_num, NULL, 0, ctx->msg.data_buf, ctx->msg.data_len);
     int bytes_sent = sendto(ctx->sock_fd,
                            (char *) &ctx->msg, sizeof(ctx->msg),
                            0, (struct sockaddr *) &client_address, address_length);
+
+    if (bytes_sent < 0) {
+        printf("[Fluent Bit] [in_raw_msgpack] Failed to send data to client\n");
+        return -1;
+    }
 
     return 0;
 }

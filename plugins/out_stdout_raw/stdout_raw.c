@@ -607,5 +607,7 @@ struct flb_output_plugin out_stdout_raw_plugin = {
     .cb_flush     = cb_stdout_raw_flush,
     .cb_exit      = cb_stdout_raw_exit,
     .flags        = 0,
+    .event_type   = FLB_OUTPUT_LOGS | FLB_OUTPUT_METRICS | FLB_OUTPUT_TRACES |
+                    FLB_OUTPUT_PROFILES | FLB_OUTPUT_BLOBS,
     .config_map   = config_map
 };
