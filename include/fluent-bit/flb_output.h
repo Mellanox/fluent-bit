@@ -96,7 +96,7 @@ int flb_chunk_trace_output(struct flb_chunk_trace *trace, struct flb_output_inst
 #define FLB_OUTPUT_TRACES      4
 #define FLB_OUTPUT_BLOBS       8
 #define FLB_OUTPUT_PROFILES    16
-
+#define FLB_OUTPUT_RAW_MSGPACK 32
 #define FLB_OUTPUT_FLUSH_COMPAT_OLD_18()                 \
     const void *data   = event_chunk->data;              \
     size_t     bytes   = event_chunk->size;              \
