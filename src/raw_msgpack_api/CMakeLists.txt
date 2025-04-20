@@ -28,3 +28,7 @@ target_link_libraries(raw_msgpack_api ${CMAKE_THREAD_LIBS_INIT})
 set_target_properties(raw_msgpack_api PROPERTIES INSTALL_RPATH "/opt/mellanox/collectx/lib:$ORIGIN")
 
 install(TARGETS raw_msgpack_api LIBRARY DESTINATION ${FLB_INSTALL_LIBDIR})
+
+add_executable(test_raw_msgpack_api test_raw_msgpack_api.c)
+target_link_libraries(test_raw_msgpack_api msgpack-c-static dl)
+
