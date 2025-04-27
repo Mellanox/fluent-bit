@@ -636,7 +636,7 @@ static struct flb_config_map config_map[] = {
 /* Plugin registration */
 struct flb_output_plugin out_stdout_raw_plugin = {
     .name         = "stdout_raw",
-    .description  = "Prints raw msgpack data withot timestamp to STDOUT",
+    .description  = "Prints raw msgpack data to stdout or to a file",
     .cb_init      = cb_stdout_raw_init,
     .cb_flush     = cb_stdout_raw_flush,
     .cb_exit      = cb_stdout_raw_exit,
