@@ -37,6 +37,9 @@
 #include <fluent-bit/flb_time.h>
 #include <fluent-bit/flb_pack.h>
 #include <fluent-bit/flb_config_map.h>
+#include <fluent-bit/flb_metrics.h>
+#include <fluent-bit/flb_log_event_decoder.h>
+
 #include <msgpack.h>
 #include <time.h>
 
@@ -465,13 +468,14 @@ static void cb_stdout_raw_flush(struct flb_event_chunk *event_chunk,
                                 void *out_context,
                                 struct flb_config *config)
 {
-    msgpack_unpacked result;
-    size_t off = 0;
+    struct flb_log_event_decoder log_decoder;
+    struct flb_log_event         log_event;
     struct flb_stdout_raw *ctx = out_context;
     flb_sds_t json;
-    char *buf = NULL;
     (void) i_ins;
     (void) config;
+
+    int result = FLB_EVENT_DECODER_SUCCESS;
 
     if (ctx->measure_speed) {
 #ifdef __x86_64__
@@ -498,28 +502,58 @@ static void cb_stdout_raw_flush(struct flb_event_chunk *event_chunk,
             }
             fflush(stdout);
         } else {
-            msgpack_unpacked_init(&result);
-            while (msgpack_unpack_next(&result, event_chunk->data,
-                                       event_chunk->size, &off) == MSGPACK_UNPACK_SUCCESS) {
-                fprintf(ctx->out_stream, "[%zd] %s: ", ctx->global_record_cnt++, event_chunk->tag);
-                msgpack_object_print(ctx->out_stream, result.data);
-                fprintf(ctx->out_stream, "\n");
+            result = flb_log_event_decoder_init(&log_decoder,
+                                                (char *) event_chunk->data,
+                                                 event_chunk->size);
+            if (result != FLB_EVENT_DECODER_SUCCESS) {
+                flb_plg_error(ctx->ins,
+                            "Log event decoder initialization error : %d", result);
+
+                FLB_OUTPUT_RETURN(FLB_RETRY);
+            }
+            while (flb_log_event_decoder_next(&log_decoder,
+                                              &log_event) == FLB_EVENT_DECODER_SUCCESS) {
+
+                if (log_event.group_attributes != NULL) {
+                    printf("GROUP METADATA : \n\n");
+                    msgpack_object_print(stdout, *log_event.group_metadata);
+                    printf("\n\n");
+
+                    printf("GROUP ATTRIBUTES : \n\n");
+                    msgpack_object_print(stdout, *log_event.group_attributes);
+                    printf("\n\n");
+                }
+
+                fprintf(ctx->out_stream, "[%zd] %s: [[", ctx->global_record_cnt++, event_chunk->tag);
+                fprintf(ctx->out_stream, "%"PRId32".%09lu, ", (int32_t) log_event.timestamp.tm.tv_sec,
+                        log_event.timestamp.tm.tv_nsec);
+
+                msgpack_object_print(ctx->out_stream, *log_event.metadata);
+                fprintf(ctx->out_stream, "], ");
+
+                msgpack_object_print(ctx->out_stream, *log_event.body);
+                fprintf(ctx->out_stream, "]\n");
 
                 if (ctx->use_bin_file_check) {
                     ctx->total_num_received_records++;
-                    update_record_counters(ctx->record_counters, result.data);
+                    update_record_counters(ctx->record_counters, *log_event.body);
                 }
             }
+            result = flb_log_event_decoder_get_last_result(&log_decoder);
 
-            msgpack_unpacked_destroy(&result);
-            flb_free(buf);
+            flb_log_event_decoder_destroy(&log_decoder);
         }
 
         fflush(ctx->out_stream);
+
+        if (result != FLB_EVENT_DECODER_SUCCESS) {
+            flb_plg_error(ctx->ins, "Log event decoder error : %d", result);
+            FLB_OUTPUT_RETURN(FLB_ERROR);
+        }
     }  // measure_speed
 
     if (ctx->use_bin_file_check) {
-        // to check that we recieved all data from in_raw_msgpack
+        // to check that we received all data from in_raw_msgpack
         if (ctx->check_in_raw_msgpack_fd) {
             write(ctx->check_in_raw_msgpack_fd, event_chunk->data, event_chunk->size);
         }
