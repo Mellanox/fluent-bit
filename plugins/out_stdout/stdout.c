@@ -240,7 +240,7 @@ void check_msgpack_keys_stdout(FILE* out, msgpack_object o, bool iskey) {
         if (!iskey) {
             break;
         }
-        bool corrupted = is_name_corrupted(o.via.str.ptr, o.via.str.size);
+        bool corrupted = is_name_corrupted_stdout(o.via.str.ptr, o.via.str.size);
 
         if (corrupted) {
             fprintf(out, "key=\"");
