@@ -600,7 +600,7 @@ static struct flb_config_map config_map[] = {
      "Specifies the output dir to check end-to-end data transfer."
     },
     {
-     FLB_CONFIG_MAP_BOOL, "stream", NULL,
+     FLB_CONFIG_MAP_STR, "stream", NULL,
      0, FLB_FALSE, 0,
      "Stream destination: file name, stdout, or stderr. Default is stdout."
     },
