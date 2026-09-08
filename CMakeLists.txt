@@ -589,8 +589,9 @@ endif()
 # Harden release binary against security vulnerabilities
 #
 # Every compiler flag is probed with check_c_compiler_flag() so that older
-# toolchains (e.g. GCC 8 on el8 aarch64, which lacks -mbranch-protection)
-# simply skip the flags they do not understand instead of failing the build.
+# toolchains (e.g. GCC < 9 lacks -mbranch-protection, GCC < 8 lacks
+# -fcf-protection / -fstack-clash-protection) simply skip the flags they do
+# not understand instead of failing the build.
 # The accepted set is applied to both C and C++ (CXX is enabled later for the
 # SQL processor / simdutf, but it uses the same toolchain).
 if(FLB_SECURITY STREQUAL "On" OR (FLB_SECURITY STREQUAL "ReleaseOnly" AND FLB_RELEASE))
