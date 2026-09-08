@@ -587,15 +587,60 @@ if(FLB_ENFORCE_ALIGNMENT)
 endif()
 
 # Harden release binary against security vulnerabilities
+#
+# Every compiler flag is probed with check_c_compiler_flag() so that older
+# toolchains (e.g. GCC 8 on el8 aarch64, which lacks -mbranch-protection)
+# simply skip the flags they do not understand instead of failing the build.
+# The accepted set is applied to both C and C++ (CXX is enabled later for the
+# SQL processor / simdutf, but it uses the same toolchain).
 if(FLB_SECURITY STREQUAL "On" OR (FLB_SECURITY STREQUAL "ReleaseOnly" AND FLB_RELEASE))
   if (NOT MSVC)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-z,relro,-z,now")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-z,noexecstack")
+    # Full RELRO + BIND_NOW + non-executable stack for every linked artifact.
+    set(_flb_hardening_ldflags "-Wl,-z,relro,-z,now -Wl,-z,noexecstack")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_flb_hardening_ldflags}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_flb_hardening_ldflags}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_flb_hardening_ldflags}")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${_flb_hardening_ldflags}")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${_flb_hardening_ldflags}")
+    unset(_flb_hardening_ldflags)
+
     if(NOT FLB_SMALL)
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector")
-      # Fortify requires optimization
+      set(_flb_hardening_cflags
+        -fstack-protector-strong
+        -fstack-clash-protection)
+
+      # Control-flow integrity, per architecture:
+      #   x86_64  -> Intel CET (IBT + SHSTK) via -fcf-protection=full
+      #   aarch64 -> ARMv8.3 PAC + ARMv8.5 BTI via -mbranch-protection=standard
+      if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+        list(APPEND _flb_hardening_cflags -fcf-protection=full)
+      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        list(APPEND _flb_hardening_cflags -mbranch-protection=standard)
+      endif()
+
+      foreach(_flb_flag IN LISTS _flb_hardening_cflags)
+        string(MAKE_C_IDENTIFIER "FLB_HAS${_flb_flag}" _flb_flag_var)
+        check_c_compiler_flag("${_flb_flag}" ${_flb_flag_var})
+        if(${_flb_flag_var})
+          set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_flb_flag}")
+          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_flb_flag}")
+        else()
+          message(STATUS "Hardening: compiler does not support ${_flb_flag}, skipping")
+        endif()
+      endforeach()
+      unset(_flb_hardening_cflags)
+
+      # _FORTIFY_SOURCE requires optimization (-O1 or higher). Only inject =2
+      # when nothing has configured it yet, so toolchains that already default
+      # to a level (Ubuntu: =2, some distros: =3) are never downgraded and an
+      # explicit -U_FORTIFY_SOURCE (fuzz / sanitizer builds) is preserved.
       if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FORTIFY_SOURCE=1")
+        if(NOT "${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS}" MATCHES "_FORTIFY_SOURCE")
+          set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FORTIFY_SOURCE=2")
+          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FORTIFY_SOURCE=2")
+        else()
+          message(STATUS "Hardening: _FORTIFY_SOURCE already configured, preserving it")
+        endif()
       endif()
     endif()
   endif()
