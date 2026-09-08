@@ -258,6 +258,18 @@ if(NOT LIBBACKTRACE_FOUND)
     # Set up build paths
     set(FLB_LIBBACKTRACE_PATH "${CMAKE_CURRENT_BINARY_DIR}/backtrace-prefix/lib/libbacktrace.a")
 
+    # Propagate the compiler and the compile flags of the main build into the
+    # autoconf build. Without this, configure falls back to its own default
+    # "-g -O2", so libbacktrace.a is compiled without any of the FLB_SECURITY
+    # hardening flags. Its objects then lack the GNU property note
+    # (CET on x86_64, BTI/PAC on aarch64) and the linker drops the note from
+    # the whole libfluent-bit.so the static archive is linked into.
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" _flb_backtrace_cfg)
+    set(_flb_backtrace_cflags "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_flb_backtrace_cfg}} -fPIC")
+    string(REGEX REPLACE "[ \t]+" " " _flb_backtrace_cflags "${_flb_backtrace_cflags}")
+    string(STRIP "${_flb_backtrace_cflags}" _flb_backtrace_cflags)
+    unset(_flb_backtrace_cfg)
+
     # Build using ExternalProject with autoconf/configure
     ExternalProject_Add(backtrace
       SOURCE_DIR ${LIBBACKTRACE_SOURCE_DIR}
@@ -266,6 +278,8 @@ if(NOT LIBBACKTRACE_FOUND)
                         --prefix=<INSTALL_DIR>
                         --enable-shared=no
                         --enable-static=yes
+                        "CC=${DEPS_C_COMPILER}"
+                        "CFLAGS=${_flb_backtrace_cflags}"
       BUILD_COMMAND ${EXTERNAL_BUILD_TOOL}
       BUILD_BYPRODUCTS ${FLB_LIBBACKTRACE_PATH}
       INSTALL_COMMAND ${EXTERNAL_BUILD_TOOL} DESTDIR= install

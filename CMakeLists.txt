@@ -619,12 +619,18 @@ if(FLB_SECURITY STREQUAL "On" OR (FLB_SECURITY STREQUAL "ReleaseOnly" AND FLB_RE
         list(APPEND _flb_hardening_cflags -mbranch-protection=standard)
       endif()
 
+      # The flags are also applied to ASM sources: hand-written .S files in
+      # bundled dependencies (zstd's huf_decompress_amd64.S) only emit the GNU
+      # property note when the preprocessor sees __CET__, i.e. when the
+      # assembler driver is invoked with -fcf-protection as well. One object
+      # without the note is enough for ld to drop it from the whole library.
       foreach(_flb_flag IN LISTS _flb_hardening_cflags)
         string(MAKE_C_IDENTIFIER "FLB_HAS${_flb_flag}" _flb_flag_var)
         check_c_compiler_flag("${_flb_flag}" ${_flb_flag_var})
         if(${_flb_flag_var})
           set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_flb_flag}")
           set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_flb_flag}")
+          set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${_flb_flag}")
         else()
           message(STATUS "Hardening: compiler does not support ${_flb_flag}, skipping")
         endif()
