@@ -33,6 +33,10 @@ asm (
       ".globl _co_switch_aarch64\n"
       "co_switch_aarch64:\n"
       "_co_switch_aarch64:\n"
+      /* BTI landing pad (hint #34 == "bti c"; a NOP on cores without BTI): this TU
+       * carries the BTI property note when built with -mbranch-protection, so an
+       * indirect call into the routine must land on a pad. */
+      "  hint #34\n"
       "  stp x8,  x9,  [x1]\n"
       "  stp x10, x11, [x1, #16]\n"
       "  stp x12, x13, [x1, #32]\n"
@@ -58,7 +62,11 @@ asm (
       "  ldp x28, x29, [x0, #144]\n"
       "  ldp x16, x17, [x0, #160]\n"
       "  mov sp, x16\n"
-      "  br x17\n"
+      /* Resume at the saved return address with RET, not BR: under BTI (guarded
+       * pages, Neoverse V2 and newer) BR must land on a landing pad, and a return
+       * address inside a C function has none -> Branch Target Exception (SIGILL).
+       * RET is exempt from the BTI check. */
+      "  ret x17\n"
       ".previous\n"
     );
 
